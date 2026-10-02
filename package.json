@@ -1,0 +1,29 @@
+{
+  "name": "estoquein",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plataforma de gestão de estoque para pequenas empresas",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev -w @estoquein/api\" \"npm run dev -w @estoquein/web\"",
+    "build": "npm run build -w @estoquein/api && npm run build -w @estoquein/web",
+    "start": "npm run start -w @estoquein/api",
+    "test": "npm test -w @estoquein/api && npm test -w @estoquein/web",
+    "typecheck": "npm run typecheck --workspaces",
+    "db:reset": "npm run db:reset -w @estoquein/api",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "desktop:dev": "npm run dev -w @estoquein/desktop",
+    "desktop:dist": "npm run dist -w @estoquein/desktop"
+  },
+  "engines": {
+    "node": ">=20.11"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5",
+    "prettier": "^3.9.9"
+  }
+}

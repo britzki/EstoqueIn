@@ -1,0 +1,64 @@
+{
+  "name": "@estoquein/desktop",
+  "productName": "EstoqueIn",
+  "version": "1.5.0",
+  "private": true,
+  "description": "EstoqueIn — gestão de estoque para pequenas empresas",
+  "author": "EstoqueIn",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs && node run-electron.mjs",
+    "dist": "node build.mjs --production && electron-builder --win --publish never",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2"
+  },
+  "build": {
+    "appId": "dev.estoquein.desktop",
+    "productName": "EstoqueIn",
+    "copyright": "Copyright © 2026",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "!dist/**/*.map",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "dist/engine/**"
+    ],
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "EstoqueIn-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "EstoqueIn",
+      "installerLanguages": [
+        "pt_BR"
+      ],
+      "language": "1046",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
+    }
+  }
+}

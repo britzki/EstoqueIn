@@ -1,0 +1,26 @@
+node_modules/
+dist/
+coverage/
+
+# Ambiente
+.env
+.env.local
+!.env.example
+
+# Banco local (SQLite)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Editor / SO
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+release/
+
+# Anotações internas (preços, clientes): ficam só no computador
+docs/privado/

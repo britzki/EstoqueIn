@@ -1,0 +1,39 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand-50: #f0fdfa;
+  --color-brand-100: #ccfbf1;
+  --color-brand-200: #99f6e4;
+  --color-brand-500: #14b8a6;
+  --color-brand-600: #0d9488;
+  --color-brand-700: #0f766e;
+  --color-brand-800: #115e59;
+  --color-brand-900: #134e4a;
+
+  /* Séries dos gráficos (paleta categórica validada para daltonismo) */
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+/* Impressão de etiquetas: só o conteúdo de #print-root aparece no papel. */
+#print-root {
+  display: none;
+}
+
+@media print {
+  body > #root {
+    display: none;
+  }
+  #print-root {
+    display: block;
+  }
+  @page {
+    margin: 8mm;
+  }
+}

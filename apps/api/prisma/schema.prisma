@@ -1,0 +1,510 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// SQLite para rodar localmente sem infraestrutura.
+// Para produção basta trocar o provider para "postgresql" e gerar novas migrations.
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  OPERATOR
+  VIEWER
+}
+
+enum MovementType {
+  ENTRY
+  EXIT
+  TRANSFER_IN
+  TRANSFER_OUT
+  ADJUSTMENT
+  FRACTION_OUT // pacote aberto para venda a granel
+  FRACTION_IN // granel recebido do pacote aberto
+  SALE_CANCEL // devolução ao estoque por venda cancelada
+  SALE_RETURN // devolução parcial de itens pelo cliente
+}
+
+enum AlertType {
+  LOW_STOCK
+  OUT_OF_STOCK
+  NEGATIVE_STOCK // vendido além do saldo registrado: pede conferência
+}
+
+enum AlertStatus {
+  OPEN
+  RESOLVED
+}
+
+enum InventoryStatus {
+  OPEN
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id                 String   @id @default(cuid())
+  name               String
+  email              String   @unique
+  passwordHash       String
+  role               Role     @default(OPERATOR)
+  active             Boolean  @default(true)
+  // Senha temporária (ex.: após redefinição): o sistema exige a troca no próximo acesso.
+  mustChangePassword Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  movements          StockMovement[]
+  inventoriesCreated Inventory[]
+  alertsAcknowledged StockAlert[]
+  nfeImports         NfeImport[]
+  sales              Sale[]          @relation("SaleUser")
+  salesCancelled     Sale[]          @relation("SaleCancelledBy")
+  auditLogs          AuditLog[]
+  cashSessionsOpened CashSession[]   @relation("CashOpenedBy")
+  cashSessionsClosed CashSession[]   @relation("CashClosedBy")
+  cashMovements      CashMovement[]
+  saleReturns        SaleReturn[]
+}
+
+model Supplier {
+  id          String   @id @default(cuid())
+  name        String
+  document    String?  @unique // CNPJ ou CPF
+  email       String?
+  phone       String?
+  contactName String?
+  notes       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products         Product[]
+  movements        StockMovement[]
+  supplierProducts SupplierProduct[]
+  nfeImports       NfeImport[]
+
+  @@index([name])
+}
+
+model Warehouse {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  address   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stockLevels  StockLevel[]
+  movements    StockMovement[]
+  alerts       StockAlert[]
+  inventories  Inventory[]
+  nfeImports   NfeImport[]
+  sales        Sale[]
+  cashSessions CashSession[]
+}
+
+model Product {
+  id              String   @id @default(cuid())
+  sku             String   @unique
+  barcode         String?  @unique
+  name            String
+  description     String?
+  category        String?
+  unit            String   @default("UN")
+  costCents       Int      @default(0) // custo médio ponderado
+  priceCents      Int      @default(0)
+  minStock        Float    @default(0) // mínimo padrão, aplicado a cada estoque
+  active          Boolean  @default(true)
+  // Aceita quantidades com casas decimais (venda por peso/volume: kg, L, m).
+  fractional      Boolean  @default(false)
+  // Produto a granel: é abastecido abrindo unidades do produto de origem (ex.: saco de 15 kg).
+  sourceProductId String?
+  sourceYield     Float? // quanto de granel uma unidade do produto de origem rende (ex.: 15)
+  // Código do produto na balança etiquetadora (PLU), embutido no código de barras da etiqueta.
+  scaleCode       String?  @unique
+  supplierId      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  sourceProduct    Product?          @relation("BulkSource", fields: [sourceProductId], references: [id], onDelete: SetNull)
+  bulkProducts     Product[]         @relation("BulkSource")
+  supplier         Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  stockLevels      StockLevel[]
+  movements        StockMovement[]
+  alerts           StockAlert[]
+  inventoryItems   InventoryItem[]
+  supplierProducts SupplierProduct[]
+  saleItems        SaleItem[]
+
+  @@index([name])
+  @@index([category])
+}
+
+// Saldo atual de um produto em um estoque (depósito, loja...).
+model StockLevel {
+  id          String   @id @default(cuid())
+  productId   String
+  warehouseId String
+  quantity    Float    @default(0)
+  minQuantity Float? // sobrescreve Product.minStock neste estoque
+  updatedAt   DateTime @updatedAt
+
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, warehouseId])
+}
+
+// Histórico imutável: toda alteração de saldo gera exatamente um registro aqui.
+model StockMovement {
+  id            String       @id @default(cuid())
+  type          MovementType
+  productId     String
+  warehouseId   String
+  quantity      Float // variação com sinal: positivo entra, negativo sai
+  balanceAfter  Float
+  unitCostCents Int?
+  supplierId    String?
+  documentRef   String? // ex.: número da nota fiscal
+  reason        String?
+  transferId    String? // agrupa as duas pernas de uma transferência ou de um fracionamento
+  inventoryId   String?
+  nfeImportId   String? // nota fiscal de origem (entrada por XML)
+  saleId        String? // venda que gerou a saída (ou a devolução, se cancelada)
+  userId        String
+  createdAt     DateTime     @default(now())
+
+  product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  warehouse Warehouse  @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  supplier  Supplier?  @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  inventory Inventory? @relation(fields: [inventoryId], references: [id], onDelete: SetNull)
+  nfeImport NfeImport? @relation(fields: [nfeImportId], references: [id], onDelete: SetNull)
+  sale      Sale?      @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  user      User       @relation(fields: [userId], references: [id])
+
+  @@index([productId, createdAt])
+  @@index([warehouseId, createdAt])
+  @@index([createdAt])
+  @@index([transferId])
+}
+
+model StockAlert {
+  id               String      @id @default(cuid())
+  type             AlertType
+  status           AlertStatus @default(OPEN)
+  productId        String
+  warehouseId      String
+  quantity         Float // saldo no momento da última avaliação
+  threshold        Float // mínimo vigente
+  acknowledgedAt   DateTime?
+  acknowledgedById String?
+  resolvedAt       DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  product        Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  warehouse      Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  acknowledgedBy User?     @relation(fields: [acknowledgedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([productId, warehouseId, status])
+}
+
+model Inventory {
+  id          String          @id @default(cuid())
+  warehouseId String
+  status      InventoryStatus @default(OPEN)
+  notes       String?
+  createdById String
+  createdAt   DateTime        @default(now())
+  completedAt DateTime?
+
+  warehouse Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  createdBy User            @relation(fields: [createdById], references: [id])
+  items     InventoryItem[]
+  movements StockMovement[]
+
+  @@index([warehouseId, status])
+}
+
+model InventoryItem {
+  id               String    @id @default(cuid())
+  inventoryId      String
+  productId        String
+  expectedQuantity Float // saldo no sistema quando o inventário foi aberto
+  countedQuantity  Float?
+  countedAt        DateTime?
+  difference       Float? // ajuste efetivamente aplicado ao concluir
+
+  inventory Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([inventoryId, productId])
+}
+
+// Código que o fornecedor usa para um produto nosso (aprendido na importação de NF-e).
+// O fator converte a unidade da nota para a do estoque: ex. 1 CX na nota = 12 UN no estoque.
+model SupplierProduct {
+  id               String   @id @default(cuid())
+  supplierId       String
+  supplierCode     String
+  productId        String
+  conversionFactor Float    @default(1)
+  description      String? // descrição usada pelo fornecedor na última nota
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([supplierId, supplierCode])
+  @@index([productId])
+}
+
+// NF-e de compra importada pelo XML. A chave de acesso impede importar a mesma nota duas vezes.
+model NfeImport {
+  id          String   @id @default(cuid())
+  accessKey   String   @unique
+  number      String
+  series      String
+  issuedAt    DateTime
+  supplierId  String
+  warehouseId String
+  userId      String
+  totalCents  Int
+  itemCount   Int
+  createdAt   DateTime @default(now())
+
+  supplier  Supplier        @relation(fields: [supplierId], references: [id])
+  warehouse Warehouse       @relation(fields: [warehouseId], references: [id])
+  user      User            @relation(fields: [userId], references: [id])
+  movements StockMovement[]
+
+  @@index([createdAt])
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  PIX
+  DEBIT
+  CREDIT
+  OTHER
+}
+
+// Venda no balcão. Não é documento fiscal: é o controle interno que baixa o estoque.
+model Sale {
+  id            String     @id @default(cuid())
+  number        Int        @unique // numeração sequencial exibida na notinha
+  status        SaleStatus @default(COMPLETED)
+  warehouseId   String
+  userId        String
+  customerName  String?
+  customerId    String?
+  cashSessionId String? // caixa aberto no momento da venda
+  notes         String?
+  subtotalCents Int
+  discountCents Int        @default(0)
+  totalCents    Int
+  paidCents     Int // soma dos pagamentos recebidos
+  changeCents   Int        @default(0) // troco (só em dinheiro)
+  costCents     Int // custo médio dos itens no momento da venda (para o lucro)
+  createdAt     DateTime   @default(now())
+  cancelledAt   DateTime?
+  cancelledById String?
+  cancelReason  String?
+
+  warehouse   Warehouse       @relation(fields: [warehouseId], references: [id])
+  user        User            @relation("SaleUser", fields: [userId], references: [id])
+  cancelledBy User?           @relation("SaleCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  customer    Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  cashSession CashSession?    @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  items       SaleItem[]
+  payments    SalePayment[]
+  movements   StockMovement[]
+  returns     SaleReturn[]
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([customerId])
+}
+
+model SaleItem {
+  id             String @id @default(cuid())
+  saleId         String
+  productId      String
+  description    String // nome do produto no momento da venda
+  unit           String
+  quantity       Float
+  unitPriceCents Int
+  totalCents     Int
+  unitCostCents  Int
+
+  sale        Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product     Product          @relation(fields: [productId], references: [id])
+  returnItems SaleReturnItem[]
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+model SalePayment {
+  id          String        @id @default(cuid())
+  saleId      String
+  method      PaymentMethod
+  amountCents Int
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+}
+
+// Dados da loja (cabeçalho da notinha) e leitura da etiqueta da balança. Registro único (id = 1).
+model StoreSettings {
+  id                 Int      @id @default(1)
+  storeName          String   @default("Minha loja")
+  document           String?
+  address            String?
+  phone              String?
+  receiptFooter      String?  @default("Obrigado pela preferência!")
+  receiptWidth       Int      @default(80) // largura da bobina em mm (58 ou 80)
+  autoPrint          Boolean  @default(true)
+  // Permite vender além do saldo registrado (o saldo fica negativo e um alerta pede conferência).
+  allowNegativeStock Boolean  @default(false)
+  // Exige caixa aberto para registrar vendas (necessário para o fechamento de caixa).
+  requireCashSession Boolean  @default(true)
+  // Troco fixo da gaveta: valor com que o caixa abre e que fica nela ao fechar (o resto é retirado).
+  cashFloatCents     Int      @default(0)
+  // Etiqueta da balança (EAN-13): prefixo + código do produto + valor (peso em gramas ou preço em centavos).
+  scalePrefix        String   @default("2")
+  scaleCodeDigits    Int      @default(6)
+  scaleValueType     String   @default("WEIGHT") // WEIGHT | PRICE
+  updatedAt          DateTime @updatedAt
+}
+
+// Registro de alterações: quem mudou o quê e quando (cadastros, preços, usuários, configurações).
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  userName  String // nome no momento da ação (preservado mesmo se o usuário for alterado)
+  action    String // CREATE | UPDATE | DELETE | IMPORT | SECURITY
+  entity    String // Product, Supplier, Warehouse, User, Settings...
+  entityId  String?
+  summary   String // descrição legível: "Produto Café 500g alterado"
+  changes   String? // JSON: { campo: { from, to } }
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
+
+// Freguês do balcão. Opcional na venda; serve para o histórico e o lembrete de recompra.
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String? // com DDD, usado no link do WhatsApp
+  notes     String? // ex.: "cão porte grande, ração X"
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sales Sale[]
+
+  @@index([name])
+}
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+// Caixa do dia: abertura com troco, sangrias/suprimentos e fechamento com conferência.
+model CashSession {
+  id            String            @id @default(cuid())
+  number        Int               @unique
+  status        CashSessionStatus @default(OPEN)
+  warehouseId   String
+  openedById    String
+  openedAt      DateTime          @default(now())
+  openingCents  Int // troco inicial
+  closedById    String?
+  closedAt      DateTime?
+  expectedCents Int? // dinheiro que deveria haver na gaveta ao fechar
+  countedCents  Int? // dinheiro contado no fechamento
+  keptCents     Int? // quanto ficou na gaveta para o próximo caixa (o resto foi retirado)
+  notes         String?
+
+  warehouse Warehouse      @relation(fields: [warehouseId], references: [id])
+  openedBy  User           @relation("CashOpenedBy", fields: [openedById], references: [id])
+  closedBy  User?          @relation("CashClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  movements CashMovement[]
+  sales     Sale[]
+  returns   SaleReturn[]
+
+  @@index([warehouseId, status])
+}
+
+enum CashMovementType {
+  WITHDRAWAL // sangria: dinheiro retirado da gaveta
+  DEPOSIT // suprimento: dinheiro colocado na gaveta
+}
+
+model CashMovement {
+  id          String           @id @default(cuid())
+  sessionId   String
+  type        CashMovementType
+  amountCents Int
+  reason      String
+  userId      String
+  createdAt   DateTime         @default(now())
+
+  session CashSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id])
+
+  @@index([sessionId])
+}
+
+// Devolução parcial: o cliente devolve parte dos itens de uma venda.
+model SaleReturn {
+  id            String        @id @default(cuid())
+  saleId        String
+  userId        String
+  cashSessionId String?
+  reason        String
+  refundCents   Int
+  refundMethod  PaymentMethod
+  costCents     Int // custo dos itens devolvidos (sai do custo das vendas)
+  createdAt     DateTime      @default(now())
+
+  sale        Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  user        User             @relation(fields: [userId], references: [id])
+  cashSession CashSession?     @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  items       SaleReturnItem[]
+
+  @@index([saleId])
+  @@index([createdAt])
+}
+
+model SaleReturnItem {
+  id          String @id @default(cuid())
+  returnId    String
+  saleItemId  String
+  quantity    Float
+  refundCents Int
+
+  saleReturn SaleReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleItem   SaleItem   @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
+
+  @@index([saleItemId])
+}

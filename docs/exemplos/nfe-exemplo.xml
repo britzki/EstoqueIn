@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+  <NFe xmlns="http://www.portalfiscal.inf.br/nfe">
+    <infNFe Id="NFe35260911222333000101550010000782311195112898" versao="4.00">
+      <ide>
+        <cUF>35</cUF>
+        <natOp>VENDA DE MERCADORIA</natOp>
+        <mod>55</mod>
+        <serie>1</serie>
+        <nNF>78231</nNF>
+        <dhEmi>2026-09-30T09:30:00-03:00</dhEmi>
+        <tpNF>1</tpNF>
+      </ide>
+      <emit>
+        <CNPJ>11222333000101</CNPJ>
+        <xNome>DISTRIBUIDORA ALVORADA LTDA</xNome>
+        <enderEmit><xMun>Sao Paulo</xMun><UF>SP</UF><fone>1140001001</fone></enderEmit>
+      </emit>
+      <dest><CNPJ>99888777000166</CNPJ><xNome>MERCADINHO EXEMPLO LTDA</xNome></dest>
+      <det nItem="1">
+        <prod>
+          <cProd>ALV-1001</cProd>
+          <cEAN>2648615268422</cEAN>
+          <xProd>CAFE TORRADO E MOIDO 500G</xProd>
+          <NCM>09012100</NCM>
+          <CFOP>5102</CFOP>
+          <uCom>UN</uCom>
+          <qCom>40.0000</qCom>
+          <vUnCom>14.2000000000</vUnCom>
+          <vProd>568.00</vProd>
+          <cEANTrib>2648615268422</cEANTrib>
+          <uTrib>UN</uTrib>
+          <qTrib>40.0000</qTrib>
+          <vUnTrib>14.2000000000</vUnTrib>
+          <vFrete>8.00</vFrete>
+          <indTot>1</indTot>
+        </prod>
+        <imposto>
+          <ICMS>
+            <ICMS10>
+              <orig>0</orig>
+              <CST>10</CST>
+              <vICMSST>0.00</vICMSST>
+            </ICMS10>
+          </ICMS>
+          <IPI>
+            <cEnq>999</cEnq>
+            <IPITrib><CST>50</CST><vIPI>0.00</vIPI></IPITrib>
+          </IPI>
+        </imposto>
+      </det>
+      <det nItem="2">
+        <prod>
+          <cProd>ALV-1002</cProd>
+          <cEAN>SEM GTIN</cEAN>
+          <xProd>ARROZ BRANCO TIPO 1 5KG FD C/6</xProd>
+          <NCM>09012100</NCM>
+          <CFOP>5102</CFOP>
+          <uCom>FD</uCom>
+          <qCom>5.0000</qCom>
+          <vUnCom>126.0000000000</vUnCom>
+          <vProd>630.00</vProd>
+          <cEANTrib>SEM GTIN</cEANTrib>
+          <uTrib>FD</uTrib>
+          <qTrib>5.0000</qTrib>
+          <vUnTrib>126.0000000000</vUnTrib>
+          <indTot>1</indTot>
+        </prod>
+        <imposto>
+          <ICMS>
+            <ICMS10>
+              <orig>0</orig>
+              <CST>10</CST>
+              <vICMSST>0.00</vICMSST>
+            </ICMS10>
+          </ICMS>
+          <IPI>
+            <cEnq>999</cEnq>
+            <IPITrib><CST>50</CST><vIPI>0.00</vIPI></IPITrib>
+          </IPI>
+        </imposto>
+      </det>
+      <det nItem="3">
+        <prod>
+          <cProd>ALV-1050</cProd>
+          <cEAN>7891000100509</cEAN>
+          <xProd>AZEITE DE OLIVA EXTRA VIRGEM 500ML</xProd>
+          <NCM>09012100</NCM>
+          <CFOP>5102</CFOP>
+          <uCom>UN</uCom>
+          <qCom>12.0000</qCom>
+          <vUnCom>28.5000000000</vUnCom>
+          <vProd>342.00</vProd>
+          <cEANTrib>7891000100509</cEANTrib>
+          <uTrib>UN</uTrib>
+          <qTrib>12.0000</qTrib>
+          <vUnTrib>28.5000000000</vUnTrib>
+          <indTot>1</indTot>
+        </prod>
+        <imposto>
+          <ICMS>
+            <ICMS10>
+              <orig>0</orig>
+              <CST>10</CST>
+              <vICMSST>0.00</vICMSST>
+            </ICMS10>
+          </ICMS>
+          <IPI>
+            <cEnq>999</cEnq>
+            <IPITrib><CST>50</CST><vIPI>5.13</vIPI></IPITrib>
+          </IPI>
+        </imposto>
+      </det>
+      <det nItem="4">
+        <prod>
+          <cProd>ALV-1003</cProd>
+          <cEAN>SEM GTIN</cEAN>
+          <xProd>FEIJAO CARIOCA TIPO 1 1KG</xProd>
+          <NCM>09012100</NCM>
+          <CFOP>5102</CFOP>
+          <uCom>UN</uCom>
+          <qCom>30.0000</qCom>
+          <vUnCom>6.9000000000</vUnCom>
+          <vProd>207.00</vProd>
+          <cEANTrib>SEM GTIN</cEANTrib>
+          <uTrib>UN</uTrib>
+          <qTrib>30.0000</qTrib>
+          <vUnTrib>6.9000000000</vUnTrib>
+          <indTot>1</indTot>
+        </prod>
+        <imposto>
+          <ICMS>
+            <ICMS10>
+              <orig>0</orig>
+              <CST>10</CST>
+              <vICMSST>0.00</vICMSST>
+            </ICMS10>
+          </ICMS>
+          <IPI>
+            <cEnq>999</cEnq>
+            <IPITrib><CST>50</CST><vIPI>0.00</vIPI></IPITrib>
+          </IPI>
+        </imposto>
+      </det>
+      <total><ICMSTot><vNF>1760.13</vNF></ICMSTot></total>
+    </infNFe>
+  </NFe>
+  <protNFe versao="4.00"><infProt><chNFe>35260911222333000101550010000782311195112898</chNFe><cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo></infProt></protNFe>
+</nfeProc>
