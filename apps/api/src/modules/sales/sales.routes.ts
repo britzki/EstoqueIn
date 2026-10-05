@@ -10,6 +10,7 @@ import {
   cancelSale,
   createReturn,
   createSale,
+  getQuickProducts,
   getSale,
   resolveCode,
   returnableQuantities,
@@ -53,6 +54,12 @@ salesRoutes.get('/', async (req, res) => {
 });
 
 /** Usado pelo caixa: identifica o produto pelo código bipado (código de barras, etiqueta da balança ou SKU). */
+/** Botões rápidos da tela de venda (marcados no cadastro + mais vendidos). */
+salesRoutes.get('/quick-products', requirePermission('sales:create'), async (req, res) => {
+  const warehouseId = typeof req.query.warehouseId === 'string' ? req.query.warehouseId : undefined;
+  res.json(await getQuickProducts(warehouseId));
+});
+
 salesRoutes.get('/resolve', requirePermission('sales:create'), async (req, res) => {
   const code = typeof req.query.code === 'string' ? req.query.code : '';
   const warehouseId = typeof req.query.warehouseId === 'string' ? req.query.warehouseId : undefined;

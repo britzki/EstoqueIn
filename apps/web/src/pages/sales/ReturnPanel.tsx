@@ -92,6 +92,7 @@ export function ReturnPanel({ sale, onDone }: { sale: SaleDetail; onDone: () => 
                 {PAYMENT_LABEL[value]}
               </option>
             ))}
+            {sale.customer && <option value="ACCOUNT">Abater do fiado de {sale.customer.name}</option>}
           </Select>
         </div>
         <div className="flex flex-col justify-end rounded-lg bg-slate-50 px-3 py-2 text-sm">

@@ -61,13 +61,15 @@ model User {
   inventoriesCreated Inventory[]
   alertsAcknowledged StockAlert[]
   nfeImports         NfeImport[]
-  sales              Sale[]          @relation("SaleUser")
-  salesCancelled     Sale[]          @relation("SaleCancelledBy")
+  sales              Sale[]            @relation("SaleUser")
+  salesCancelled     Sale[]            @relation("SaleCancelledBy")
   auditLogs          AuditLog[]
-  cashSessionsOpened CashSession[]   @relation("CashOpenedBy")
-  cashSessionsClosed CashSession[]   @relation("CashClosedBy")
+  cashSessionsOpened CashSession[]     @relation("CashOpenedBy")
+  cashSessionsClosed CashSession[]     @relation("CashClosedBy")
   cashMovements      CashMovement[]
   saleReturns        SaleReturn[]
+  customerPayments   CustomerPayment[]
+  purchaseOrders     PurchaseOrder[]
 }
 
 model Supplier {
@@ -86,6 +88,7 @@ model Supplier {
   movements        StockMovement[]
   supplierProducts SupplierProduct[]
   nfeImports       NfeImport[]
+  purchaseOrders   PurchaseOrder[]
 
   @@index([name])
 }
@@ -127,18 +130,21 @@ model Product {
   sourceYield     Float? // quanto de granel uma unidade do produto de origem rende (ex.: 15)
   // Código do produto na balança etiquetadora (PLU), embutido no código de barras da etiqueta.
   scaleCode       String?  @unique
+  // Aparece como botão rápido na tela de venda.
+  quickSale       Boolean  @default(false)
   supplierId      String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  sourceProduct    Product?          @relation("BulkSource", fields: [sourceProductId], references: [id], onDelete: SetNull)
-  bulkProducts     Product[]         @relation("BulkSource")
-  supplier         Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  sourceProduct    Product?            @relation("BulkSource", fields: [sourceProductId], references: [id], onDelete: SetNull)
+  bulkProducts     Product[]           @relation("BulkSource")
+  supplier         Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   stockLevels      StockLevel[]
   movements        StockMovement[]
   alerts           StockAlert[]
   inventoryItems   InventoryItem[]
   supplierProducts SupplierProduct[]
+  purchaseItems    PurchaseOrderItem[]
   saleItems        SaleItem[]
 
   @@index([name])
@@ -299,6 +305,7 @@ enum PaymentMethod {
   DEBIT
   CREDIT
   OTHER
+  ACCOUNT // fiado: fica na conta do cliente e é pago depois
 }
 
 // Venda no balcão. Não é documento fiscal: é o controle interno que baixa o estoque.
@@ -411,15 +418,20 @@ model AuditLog {
 
 // Freguês do balcão. Opcional na venda; serve para o histórico e o lembrete de recompra.
 model Customer {
-  id        String   @id @default(cuid())
-  name      String
-  phone     String? // com DDD, usado no link do WhatsApp
-  notes     String? // ex.: "cão porte grande, ração X"
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  name                String
+  phone               String? // com DDD, usado no link do WhatsApp
+  notes               String? // ex.: "cão porte grande, ração X"
+  // Limite de fiado (em aberto). Vazio = sem limite.
+  creditLimitCents    Int?
+  // Fiado que o cliente já devia antes de usar o sistema (passado do caderno).
+  openingBalanceCents Int      @default(0)
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  sales Sale[]
+  sales    Sale[]
+  payments CustomerPayment[]
 
   @@index([name])
 }
@@ -445,12 +457,13 @@ model CashSession {
   keptCents     Int? // quanto ficou na gaveta para o próximo caixa (o resto foi retirado)
   notes         String?
 
-  warehouse Warehouse      @relation(fields: [warehouseId], references: [id])
-  openedBy  User           @relation("CashOpenedBy", fields: [openedById], references: [id])
-  closedBy  User?          @relation("CashClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
-  movements CashMovement[]
-  sales     Sale[]
-  returns   SaleReturn[]
+  warehouse        Warehouse         @relation(fields: [warehouseId], references: [id])
+  openedBy         User              @relation("CashOpenedBy", fields: [openedById], references: [id])
+  closedBy         User?             @relation("CashClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  movements        CashMovement[]
+  sales            Sale[]
+  returns          SaleReturn[]
+  customerPayments CustomerPayment[]
 
   @@index([warehouseId, status])
 }
@@ -507,4 +520,61 @@ model SaleReturnItem {
   saleItem   SaleItem   @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
 
   @@index([saleItemId])
+}
+
+// Pagamento de fiado: abate o que o cliente deve. Em dinheiro, entra na conferência do caixa aberto.
+model CustomerPayment {
+  id            String        @id @default(cuid())
+  customerId    String
+  amountCents   Int
+  method        PaymentMethod
+  notes         String?
+  cashSessionId String?
+  userId        String
+  createdAt     DateTime      @default(now())
+
+  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  cashSession CashSession? @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  user        User         @relation(fields: [userId], references: [id])
+
+  @@index([customerId, createdAt])
+}
+
+enum PurchaseOrderStatus {
+  OPEN // enviado ao fornecedor, aguardando a mercadoria
+  RECEIVED
+  CANCELLED
+}
+
+// Pedido de compra enviado ao fornecedor (a entrada no estoque continua sendo pela NF-e ou entrada manual).
+model PurchaseOrder {
+  id          String              @id @default(cuid())
+  number      Int                 @unique
+  supplierId  String?
+  status      PurchaseOrderStatus @default(OPEN)
+  notes       String?
+  createdById String
+  createdAt   DateTime            @default(now())
+  closedAt    DateTime?
+
+  supplier  Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdBy User                @relation(fields: [createdById], references: [id])
+  items     PurchaseOrderItem[]
+
+  @@index([status])
+}
+
+model PurchaseOrderItem {
+  id            String @id @default(cuid())
+  orderId       String
+  productId     String
+  description   String
+  unit          String
+  quantity      Float
+  unitCostCents Int // custo de referência no momento do pedido
+
+  order   PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
 }

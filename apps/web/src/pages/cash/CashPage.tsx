@@ -31,7 +31,8 @@ import {
 } from '../../components/ui';
 import { CashSlip } from './CashSlip';
 
-const METHODS: PaymentMethod[] = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER'];
+const METHODS: PaymentMethod[] = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER', 'ACCOUNT'];
+const RECEIVED_METHODS = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER'] as const;
 
 const invalidateCash = (queryClient: ReturnType<typeof useQueryClient>) =>
   queryClient.invalidateQueries({ queryKey: ['cash'] });
@@ -174,7 +175,7 @@ function CashSummaryView({ cash }: { cash: CashDetail }) {
         <StatCard
           label="Dinheiro esperado na gaveta"
           value={formatMoney(summary.expectedCashCents)}
-          hint="troco + dinheiro − sangrias + suprimentos"
+          hint="troco + dinheiro (vendas e fiado recebido) − sangrias + suprimentos"
           icon={<Banknote />}
           tone="amber"
         />
@@ -185,10 +186,18 @@ function CashSummaryView({ cash }: { cash: CashDetail }) {
           <CardHeader title="Recebido por forma de pagamento" />
           <Table>
             <tbody>
-              {METHODS.filter((method) => method !== 'OTHER' || summary.byMethod.OTHER).map((method) => (
-                <tr key={method}>
-                  <Td>{PAYMENT_LABEL[method]}</Td>
-                  <Td className="text-right tabular-nums">{formatMoney(summary.byMethod[method])}</Td>
+              {METHODS.filter((method) => !['OTHER', 'ACCOUNT'].includes(method) || summary.byMethod[method]).map(
+                (method) => (
+                  <tr key={method}>
+                    <Td>{method === 'ACCOUNT' ? 'Vendido no fiado (a receber)' : PAYMENT_LABEL[method]}</Td>
+                    <Td className="text-right tabular-nums">{formatMoney(summary.byMethod[method])}</Td>
+                  </tr>
+                ),
+              )}
+              {RECEIVED_METHODS.filter((method) => summary.accountReceivedByMethod[method] > 0).map((method) => (
+                <tr key={`fiado-${method}`}>
+                  <Td>Fiado recebido ({PAYMENT_LABEL[method]})</Td>
+                  <Td className="text-right tabular-nums">{formatMoney(summary.accountReceivedByMethod[method])}</Td>
                 </tr>
               ))}
             </tbody>
@@ -433,6 +442,9 @@ function CloseModal({ cash, onClose }: { cash: CashDetail; onClose: () => void }
         <dl className="space-y-1 rounded-lg bg-slate-50 px-4 py-3 text-sm">
           <Row label="Troco inicial" value={cash.openingCents} />
           <Row label="Vendas em dinheiro (já sem troco e devoluções)" value={cash.summary.byMethod.CASH} />
+          {cash.summary.accountReceivedByMethod.CASH > 0 && (
+            <Row label="Fiado recebido em dinheiro" value={cash.summary.accountReceivedByMethod.CASH} />
+          )}
           <Row label="Suprimentos" value={cash.summary.depositsCents} />
           <Row label="Sangrias" value={-cash.summary.withdrawalsCents || 0} />
           <div className="flex justify-between border-t border-slate-200 pt-1 font-semibold text-slate-900">

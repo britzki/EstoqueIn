@@ -7,8 +7,10 @@ import { normalizeScaleCode, parseScaleLabel } from '../../lib/scale.js';
 import { applyMovement } from '../stock/stock.service.js';
 import { publishAlertChanges, type AlertChange } from '../alerts/alerts.service.js';
 import { getStoreSettings } from '../settings/settings.routes.js';
+import { assertAccountSale, getCustomerBalance } from '../customers/account.js';
 
-export const paymentMethods = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER'] as const;
+/** ACCOUNT = fiado: o valor fica na conta do cliente e é pago depois. */
+export const paymentMethods = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER', 'ACCOUNT'] as const;
 
 export const saleSchema = z.object({
   warehouseId: id,
@@ -80,6 +82,10 @@ export async function createSale(input: SaleInput, userId: string) {
       const cashCents = input.payments.filter((p) => p.method === 'CASH').reduce((sum, p) => sum + p.amountCents, 0);
       if (changeCents > cashCents)
         throw unprocessable('Só é possível dar troco sobre pagamento em dinheiro', 'INVALID_CHANGE');
+      const accountCents = input.payments
+        .filter((p) => p.method === 'ACCOUNT')
+        .reduce((sum, p) => sum + p.amountCents, 0);
+      if (accountCents > 0) await assertAccountSale(tx, customer, accountCents, totalCents);
 
       const last = await tx.sale.aggregate({ _max: { number: true } });
       const number = (last._max.number ?? 0) + 1;
@@ -145,7 +151,9 @@ export async function createSale(input: SaleInput, userId: string) {
         }
       }
 
-      return { sale, alerts };
+      // Na notinha de venda fiada sai o total que o cliente ficou devendo.
+      const customerBalanceCents = accountCents > 0 && customer ? await getCustomerBalance(customer.id, tx) : undefined;
+      return { sale, alerts, customerBalanceCents };
     },
     { timeout: 30_000 },
   );
@@ -153,6 +161,7 @@ export async function createSale(input: SaleInput, userId: string) {
   publishAlertChanges(result.alerts);
   return {
     ...result.sale,
+    customerBalanceCents: result.customerBalanceCents,
     alertsOpened: result.alerts.filter((alert) => alert.kind === 'opened' || alert.kind === 'escalated').length,
   };
 }
@@ -287,6 +296,14 @@ export async function createReturn(saleId: string, input: ReturnInput, userId: s
     if (!sale) throw notFound('Venda');
     if (sale.status === 'CANCELLED') throw conflict('Venda cancelada não aceita devolução');
 
+    // "Abater do fiado" só faz sentido se a venda tem cliente (a dívida é dele).
+    if (input.refundMethod === 'ACCOUNT' && !sale.customerId) {
+      throw unprocessable(
+        'Esta venda não tem cliente: escolha outra forma de devolver o dinheiro',
+        'ACCOUNT_NEEDS_CUSTOMER',
+      );
+    }
+
     const remaining = await returnableQuantities(sale.id, tx);
     const discountFactor = sale.subtotalCents > 0 ? sale.totalCents / sale.subtotalCents : 1;
 
@@ -354,4 +371,60 @@ export async function createReturn(saleId: string, input: ReturnInput, userId: s
 
   publishAlertChanges(result.alerts);
   return { ...result.saleReturn, saleNumber: result.sale.number };
+}
+
+const QUICK_LIMIT = 8;
+const QUICK_DAYS = 30;
+
+/**
+ * Botões rápidos da tela de venda: primeiro os produtos marcados no cadastro;
+ * se sobrar espaço, completa com os mais vendidos dos últimos 30 dias.
+ */
+export async function getQuickProducts(warehouseId?: string) {
+  const select = {
+    id: true,
+    sku: true,
+    name: true,
+    unit: true,
+    fractional: true,
+    priceCents: true,
+    quickSale: true,
+    stockLevels: { where: { warehouseId }, select: { quantity: true } },
+  } as const;
+  const sellable = { active: true, priceCents: { gt: 0 } };
+
+  const pinned = await prisma.product.findMany({
+    where: { ...sellable, quickSale: true },
+    select,
+    orderBy: { name: 'asc' },
+    take: QUICK_LIMIT,
+  });
+
+  let best: typeof pinned = [];
+  if (pinned.length < QUICK_LIMIT) {
+    const since = new Date(Date.now() - QUICK_DAYS * 24 * 60 * 60 * 1000);
+    const ranking = await prisma.saleItem.groupBy({
+      by: ['productId'],
+      where: {
+        sale: { status: 'COMPLETED', createdAt: { gte: since } },
+        productId: { notIn: pinned.map((p) => p.id) },
+      },
+      _count: { _all: true },
+      orderBy: { _count: { productId: 'desc' } },
+      take: QUICK_LIMIT * 2,
+    });
+    const found = await prisma.product.findMany({
+      where: { ...sellable, id: { in: ranking.map((row) => row.productId) } },
+      select,
+    });
+    best = ranking
+      .map((row) => found.find((product) => product.id === row.productId))
+      .filter((product): product is (typeof found)[number] => Boolean(product))
+      .slice(0, QUICK_LIMIT - pinned.length);
+  }
+
+  return [...pinned, ...best].map(({ stockLevels, ...product }) => ({
+    ...product,
+    stock: roundQty(stockLevels.reduce((sum, level) => sum + level.quantity, 0)),
+  }));
 }

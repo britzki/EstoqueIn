@@ -29,6 +29,7 @@ const PRODUCT_AUDIT_FIELDS = [
   'active',
   'fractional',
   'scaleCode',
+  'quickSale',
   'supplierId',
   'sourceProductId',
   'sourceYield',

@@ -37,6 +37,9 @@ const NewSalePage = lazy(() => import('./pages/sales/NewSalePage').then((m) => (
 const SalesPage = lazy(() => import('./pages/sales/SalesPage').then((m) => ({ default: m.SalesPage })));
 const CashPage = lazy(() => import('./pages/cash/CashPage').then((m) => ({ default: m.CashPage })));
 const CustomersPage = lazy(() => import('./pages/CustomersPage').then((m) => ({ default: m.CustomersPage })));
+const PurchaseOrdersPage = lazy(() =>
+  import('./pages/purchasing/PurchaseOrdersPage').then((m) => ({ default: m.PurchaseOrdersPage })),
+);
 const HelpPage = lazy(() => import('./pages/HelpPage').then((m) => ({ default: m.HelpPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const AuditPage = lazy(() => import('./pages/AuditPage').then((m) => ({ default: m.AuditPage })));
@@ -130,6 +133,7 @@ export function App() {
         <Route path="cash" element={<CashPage />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="help" element={<HelpPage />} />
+        <Route path="purchase-orders" element={<PurchaseOrdersPage />} />
         <Route
           path="settings"
           element={

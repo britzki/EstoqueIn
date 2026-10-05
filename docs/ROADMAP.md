@@ -10,6 +10,8 @@ Decisões já tomadas e o que fica para depois. A ordem dentro de cada seção �
 
 ## Próximos passos
 
+Já feito na versão 1.6: fiado (caderneta digital com limite, pagamentos parciais e cobrança pelo WhatsApp), botões rápidos na tela de venda, pedidos de compra a partir da sugestão e aviso de backup na tela inicial.
+
 Já feito na versão 1.5: fechamento de caixa, venda com estoque zerado (opcional, com alerta), devolução parcial, cadastro de clientes com lembrete de recompra, sugestão de compra, relatório de produtos parados, cópia diária para fora do computador e arquivo de diagnóstico.
 
 1. **Modo demonstração separado.** Banco próprio, com entrada pela tela de login e saída a qualquer momento, sem misturar com os dados reais. Serve de vitrine para quem está avaliando.
@@ -65,8 +67,6 @@ Hoje o assistente da central de ajuda funciona sem internet, buscando nas pergun
 
 - Validade e lote (vender primeiro o que vence antes), relevante para farmácia veterinária. O primeiro cliente não faz questão por enquanto.
 - Balança ligada direto ao computador, com o peso aparecendo na tela de venda (depende do modelo).
-- Venda fiada (o cadastro de clientes já existe).
-- Pedido de compra a partir da sugestão de compra, pronto para enviar ao fornecedor.
 
 ### Distribuição
 

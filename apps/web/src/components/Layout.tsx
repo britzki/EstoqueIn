@@ -13,6 +13,7 @@ import {
   LogOut,
   Menu,
   Package,
+  PackagePlus,
   ReceiptText,
   Truck,
   KeyRound,
@@ -100,6 +101,7 @@ export function Layout() {
         { to: '/movements/nfe', label: 'Entrada por NF-e', icon: <ReceiptText />, permission: 'stock:move' },
         { to: '/movements', label: 'Histórico', icon: <ClockArrowDown />, end: true },
         { to: '/inventories', label: 'Inventário', icon: <ClipboardList /> },
+        { to: '/purchase-orders', label: 'Pedidos de compra', icon: <PackagePlus /> },
       ],
     },
     {

@@ -84,6 +84,7 @@ export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   DEBIT: 'Débito',
   CREDIT: 'Crédito',
   OTHER: 'Outro',
+  ACCOUNT: 'Fiado',
 };
 
 /** Link do WhatsApp para o número (só dígitos, com DDD). */

@@ -6,8 +6,18 @@ import { cn } from '../lib/cn';
 import { useAuth } from '../lib/auth';
 import { useDebounced, useStoreSettings } from '../lib/hooks';
 import { useToast } from '../lib/toast';
-import { formatDate, formatDateTime, formatMoney, formatNumber, formatPhone, whatsappLink } from '../lib/format';
+import {
+  centsToInput,
+  formatDate,
+  formatDateTime,
+  formatMoney,
+  formatNumber,
+  formatPhone,
+  parseMoneyInput,
+  whatsappLink,
+} from '../lib/format';
 import type { Customer, Paginated, RepurchaseReminder } from '../lib/types';
+import { AccountSection, DebtorsCard } from './customers/CustomerAccount';
 import {
   Badge,
   Button,
@@ -62,7 +72,7 @@ export function CustomersPage() {
     <>
       <PageHeader
         title="Clientes"
-        description="Cadastro de clientes e aviso de recompra: quem costuma voltar e está perto de precisar de novo."
+        description="Cadastro de clientes, fiado e aviso de recompra."
         actions={
           can('sales:create') && (
             <Button icon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
@@ -71,6 +81,7 @@ export function CustomersPage() {
           )
         }
       />
+      <DebtorsCard onOpen={setViewing} />
       <Reminders onOpen={setViewing} />
       <CustomerList onOpen={setViewing} />
       {editing && <CustomerFormModal customer={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
@@ -240,6 +251,7 @@ function CustomerList({ onOpen }: { onOpen: (id: string) => void }) {
                 <Th>Nome</Th>
                 <Th>Telefone</Th>
                 <Th className="text-right">Compras</Th>
+                <Th className="text-right">Fiado</Th>
               </tr>
             </thead>
             <tbody>
@@ -248,6 +260,14 @@ function CustomerList({ onOpen }: { onOpen: (id: string) => void }) {
                   <Td className="font-medium text-slate-900">{customer.name}</Td>
                   <Td>{customer.phone ? formatPhone(customer.phone) : '—'}</Td>
                   <Td className="text-right tabular-nums">{customer._count?.sales ?? 0}</Td>
+                  <Td
+                    className={cn(
+                      'text-right tabular-nums',
+                      customer.balanceCents ? 'font-medium text-slate-900' : 'text-slate-400',
+                    )}
+                  >
+                    {customer.balanceCents ? formatMoney(customer.balanceCents) : '—'}
+                  </Td>
                 </tr>
               ))}
             </tbody>
@@ -296,6 +316,7 @@ function CustomerModal({
         <Spinner />
       ) : (
         <div className="space-y-5">
+          <AccountSection customer={data} />
           {data.notes && <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-700">{data.notes}</p>}
           {data.reminders.length > 0 && (
             <div>
@@ -350,16 +371,28 @@ function CustomerModal({
 }
 
 function CustomerFormModal({ customer, onClose }: { customer: Customer | null; onClose: () => void }) {
+  const { can } = useAuth();
+  const canSetLimit = can('sales:cancel');
   const toast = useToast();
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
     name: customer?.name ?? '',
     phone: customer?.phone ?? '',
     notes: customer?.notes ?? '',
+    creditLimit: customer?.creditLimitCents != null ? centsToInput(customer.creditLimitCents) : '',
+    openingBalance: customer?.openingBalanceCents ? centsToInput(customer.openingBalanceCents) : '',
   });
+  const { creditLimit, openingBalance, ...fields } = form;
+  const body = {
+    ...fields,
+    ...(canSetLimit && {
+      creditLimitCents: creditLimit.trim() ? parseMoneyInput(creditLimit) : null,
+      openingBalanceCents: parseMoneyInput(openingBalance) ?? 0,
+    }),
+  };
   const save = useMutation({
     mutationFn: () =>
-      customer ? api.patch<Customer>(`/customers/${customer.id}`, form) : api.post<Customer>('/customers', form),
+      customer ? api.patch<Customer>(`/customers/${customer.id}`, body) : api.post<Customer>('/customers', body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       toast.success(customer ? 'Cliente alterado' : 'Cliente cadastrado');
@@ -419,6 +452,40 @@ function CustomerFormModal({ customer, onClose }: { customer: Customer | null; o
             />
           )}
         </Field>
+        {canSetLimit && (
+          <Field
+            label="Limite de fiado (R$)"
+            hint="Deixe em branco para não ter limite. A venda que passar do limite é recusada no caixa."
+            error={errors.creditLimitCents?.[0]}
+          >
+            {(id) => (
+              <Input
+                id={id}
+                value={form.creditLimit}
+                onChange={(e) => setForm({ ...form, creditLimit: e.target.value })}
+                inputMode="decimal"
+                placeholder="Sem limite"
+              />
+            )}
+          </Field>
+        )}
+        {canSetLimit && (
+          <Field
+            label="Fiado anterior, do caderno (R$)"
+            hint="O que o cliente já devia antes de usar o sistema. Entra no saldo do fiado e pode ser pago normalmente."
+            error={errors.openingBalanceCents?.[0]}
+          >
+            {(id) => (
+              <Input
+                id={id}
+                value={form.openingBalance}
+                onChange={(e) => setForm({ ...form, openingBalance: e.target.value })}
+                inputMode="decimal"
+                placeholder="0,00"
+              />
+            )}
+          </Field>
+        )}
         <Field label="Observações" hint="Ex.: nome e raça do pet, ração preferida.">
           {(id) => (
             <Textarea

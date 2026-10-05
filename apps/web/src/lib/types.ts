@@ -86,6 +86,7 @@ export interface Product {
   sourceYield: number | null;
   /** Código do produto na balança etiquetadora. */
   scaleCode: string | null;
+  quickSale?: boolean;
   supplierId: string | null;
   supplier?: Ref | null;
   totalQuantity?: number;
@@ -222,7 +223,8 @@ export interface User extends SessionUser {
   createdAt: string;
 }
 
-export type PaymentMethod = 'CASH' | 'PIX' | 'DEBIT' | 'CREDIT' | 'OTHER';
+/** ACCOUNT = fiado (fica na conta do cliente). */
+export type PaymentMethod = 'CASH' | 'PIX' | 'DEBIT' | 'CREDIT' | 'OTHER' | 'ACCOUNT';
 
 export interface SaleItem {
   id: string;
@@ -267,6 +269,8 @@ export interface SaleDetail extends Sale {
   customer: (Ref & { phone: string | null }) | null;
   returns: SaleReturn[];
   alertsOpened?: number;
+  /** Fiado em aberto do cliente depois desta venda (só na resposta de venda fiada). */
+  customerBalanceCents?: number;
 }
 
 export interface SaleReturn {
@@ -310,6 +314,8 @@ export interface CashSummary {
   expectedCashCents: number;
   differenceCents: number | null;
   closingWithdrawalCents: number | null;
+  accountReceivedByMethod: Record<Exclude<PaymentMethod, 'ACCOUNT'>, number>;
+  accountReceivedCents: number;
   previousKeptCents: number | null;
   openingDifferenceCents: number | null;
 }
@@ -347,9 +353,57 @@ export interface Customer {
   name: string;
   phone: string | null;
   notes: string | null;
+  creditLimitCents: number | null;
+  openingBalanceCents?: number;
   active: boolean;
   createdAt: string;
   _count?: { sales: number };
+  /** Fiado em aberto. */
+  balanceCents?: number;
+}
+
+export interface AccountEntry {
+  date: string;
+  kind: 'OPENING' | 'SALE' | 'RETURN' | 'PAYMENT';
+  description: string;
+  amountCents: number;
+  balanceCents: number;
+  saleId?: string;
+}
+
+export interface AccountStatement {
+  balanceCents: number;
+  openSince: string | null;
+  creditLimitCents: number | null;
+  entries: AccountEntry[];
+}
+
+export interface Debtor {
+  customer: { id: string; name: string; phone: string | null; creditLimitCents: number | null };
+  balanceCents: number;
+  openSince: string | null;
+  daysOpen: number | null;
+  lastPaymentAt: string | null;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  number: number;
+  status: 'OPEN' | 'RECEIVED' | 'CANCELLED';
+  notes: string | null;
+  createdAt: string;
+  closedAt: string | null;
+  totalCents: number;
+  supplier: { id: string; name: string; phone: string | null; email: string | null; contactName: string | null } | null;
+  createdBy: Ref;
+  items: Array<{
+    id: string;
+    productId: string;
+    description: string;
+    unit: string;
+    quantity: number;
+    unitCostCents: number;
+  }>;
 }
 
 export interface RepurchaseReminder {

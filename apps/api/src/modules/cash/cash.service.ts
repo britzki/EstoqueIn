@@ -18,11 +18,13 @@ export const closeSchema = z.object({
   notes: optionalText(500),
 });
 
-const METHODS: PaymentMethod[] = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER'];
+const METHODS: PaymentMethod[] = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER', 'ACCOUNT'];
 
 /**
  * Resumo do caixa. O dinheiro esperado na gaveta é:
- * troco inicial + vendas em dinheiro (já sem o troco dado) + suprimentos − sangrias − devoluções em dinheiro.
+ * troco inicial + vendas em dinheiro (já sem o troco dado) + fiado recebido em dinheiro
+ * + suprimentos − sangrias − devoluções em dinheiro.
+ * Venda no fiado conta no faturamento, mas não é dinheiro recebido: entra quando o cliente paga.
  * Vendas canceladas não entram (o dinheiro voltou ao cliente).
  */
 export async function getCashSummary(sessionId: string) {
@@ -35,6 +37,7 @@ export async function getCashSummary(sessionId: string) {
       movements: { include: { user: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
       sales: { include: { payments: true } },
       returns: true,
+      customerPayments: { include: { customer: { select: { id: true, name: true } } }, orderBy: { createdAt: 'asc' } },
     },
   });
   if (!session) throw notFound('Caixa');
@@ -60,7 +63,11 @@ export async function getCashSummary(sessionId: string) {
     .filter((m) => m.type === 'WITHDRAWAL')
     .reduce((sum, m) => sum + m.amountCents, 0);
   const deposits = session.movements.filter((m) => m.type === 'DEPOSIT').reduce((sum, m) => sum + m.amountCents, 0);
-  const expectedCashCents = session.openingCents + byMethod.CASH - refunds.CASH + deposits - withdrawals;
+  // Pagamentos de fiado recebidos neste caixa.
+  const accountReceived = Object.fromEntries(METHODS.map((method) => [method, 0])) as Record<PaymentMethod, number>;
+  for (const payment of session.customerPayments) accountReceived[payment.method] += payment.amountCents;
+  const expectedCashCents =
+    session.openingCents + byMethod.CASH - refunds.CASH + accountReceived.CASH + deposits - withdrawals;
 
   // O que ficou na gaveta no fechamento anterior deste estoque: deve ser o troco desta abertura.
   const previous = await prisma.cashSession.findFirst({
@@ -81,6 +88,11 @@ export async function getCashSummary(sessionId: string) {
         completed.reduce((sum, sale) => sum + sale.totalCents, 0) - returns.reduce((sum, r) => sum + r.refundCents, 0),
       // Recebido por forma de pagamento, já descontadas as devoluções.
       byMethod: Object.fromEntries(METHODS.map((method) => [method, byMethod[method] - refunds[method]])),
+      // Fiado recebido de clientes neste caixa, por forma de pagamento.
+      accountReceivedByMethod: Object.fromEntries(
+        METHODS.filter((method) => method !== 'ACCOUNT').map((method) => [method, accountReceived[method]]),
+      ),
+      accountReceivedCents: session.customerPayments.reduce((sum, payment) => sum + payment.amountCents, 0),
       withdrawalsCents: withdrawals,
       depositsCents: deposits,
       expectedCashCents,

@@ -45,6 +45,9 @@ Em **Produtos → Importar CSV**, com o botão **Baixar modelo** para ver o form
 Depois:
 
 - [ ] Para ração a granel: abrir o cadastro do saco fechado e usar **Criar versão a granel**.
+- [ ] Marcar como **Botão rápido na tela de venda** os produtos que mais saem (ração a granel, por exemplo).
+- [ ] **Fiado do caderno:** cadastrar em Clientes quem está devendo e preencher **Fiado anterior, do caderno** com o valor que cada um deve hoje. Definir o limite de fiado de quem precisar.
+- [ ] Preencher o **telefone (WhatsApp) dos fornecedores**, para enviar os pedidos de compra direto.
 - [ ] Fornecedores e produtos novos entram sozinhos pelas próximas notas, em **Entrada por NF-e**.
 
 O histórico de vendas do sistema antigo não é migrado: o cliente consulta o passado no sistema anterior.
@@ -63,6 +66,8 @@ O programa faz backup automático todo dia e antes de cada atualização, mas **
 - [ ] **Nova venda:** bipar, F2 para finalizar, F4 para voltar à leitura. Escolher o cliente (ou cadastrar com o WhatsApp) para ele entrar no lembrete de recompra.
 - [ ] **Devolução:** em **Vendas**, abrir a venda e usar **Devolver itens**. Cancelar só quando a venda inteira foi um erro.
 - [ ] **Clientes → Hora de recomprar:** quem costuma levar ração e está perto de acabar, com o botão para avisar pelo WhatsApp.
+- [ ] **Fiado:** vender no fiado (escolher o cliente e a forma Fiado), receber pagamento em Clientes e usar o botão Cobrar.
+- [ ] **Pedidos de compra:** gerar o pedido pela sugestão de compra e marcar como recebido quando chegar.
 - [ ] **Ajuda:** mostrar a tecla F1 e o botão Falar com o suporte.
 - [ ] **Relatórios → Sugestão de compra** antes de fazer o pedido ao fornecedor, e **Produtos parados** de tempos em tempos.
 - [ ] **Entrada por NF-e:** enviar o XML que o fornecedor manda por e-mail.

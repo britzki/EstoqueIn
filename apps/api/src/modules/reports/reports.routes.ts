@@ -91,6 +91,7 @@ const PAYMENT_LABEL: Record<string, string> = {
   DEBIT: 'Débito',
   CREDIT: 'Crédito',
   OTHER: 'Outro',
+  ACCOUNT: 'Fiado',
 };
 
 reportsRoutes.get('/sales', async (req, res) => {
@@ -160,6 +161,7 @@ reportsRoutes.get('/purchase-suggestion', async (req, res) => {
       { header: 'Unidade', value: (r) => r.unit },
       { header: 'Saldo', value: (r) => r.quantity },
       { header: 'Mínimo', value: (r) => r.minStock },
+      { header: 'Já pedido', value: (r) => r.onOrder },
       { header: 'Consumo médio/dia', value: (r) => r.dailyAverage },
       { header: 'Dias restantes', value: (r) => r.daysLeft ?? '' },
       { header: 'Comprar', value: (r) => r.suggested },

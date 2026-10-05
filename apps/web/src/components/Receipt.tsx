@@ -70,6 +70,20 @@ export function Receipt({ sale, settings }: { sale: SaleDetail; settings: StoreS
           <span>{money(sale.changeCents)}</span>
         </div>
       )}
+      {sale.payments.some((payment) => payment.method === 'ACCOUNT') && (
+        <>
+          {rule}
+          <p className="font-bold">FIADO: {sale.customerName}</p>
+          {sale.customerBalanceCents !== undefined && (
+            <div className={row}>
+              <span>Total em aberto</span>
+              <span>{money(sale.customerBalanceCents)}</span>
+            </div>
+          )}
+          <p className="mt-5 text-center">_______________________</p>
+          <p className="text-center">Assinatura do cliente</p>
+        </>
+      )}
       {sale.returns?.map((saleReturn) => (
         <div key={saleReturn.id} className={row}>
           <span>Devolução {formatDateTime(saleReturn.createdAt)}</span>

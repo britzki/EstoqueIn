@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeftRight, Boxes, Download, PackagePlus, PackageX, ShoppingCart, TrendingUp } from 'lucide-react';
 import { SalesReport } from './SalesReport';
@@ -30,7 +30,9 @@ import {
 type Report = 'sales' | 'position' | 'purchase' | 'stale' | 'movements' | 'abc';
 
 export function ReportsPage() {
-  const [report, setReport] = useState<Report>('sales');
+  // ?tab=purchase abre direto a sugestão de compra (link da tela de pedidos).
+  const [params] = useSearchParams();
+  const [report, setReport] = useState<Report>(() => (params.get('tab') as Report | null) ?? 'sales');
 
   return (
     <>

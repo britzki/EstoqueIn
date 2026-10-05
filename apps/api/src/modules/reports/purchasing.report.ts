@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma.js';
 import { roundQty } from '../../lib/quantity.js';
+import { quantitiesOnOrder } from '../purchasing/purchase-orders.routes.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -30,12 +31,12 @@ export interface PurchaseSuggestionFilters {
 
 /**
  * Sugestão de compra: com base no consumo médio diário, mostra o que acaba antes da próxima compra
- * e quanto comprar para cobrir `coverDays` dias (sem deixar abaixo do mínimo).
+ * e quanto comprar para cobrir `coverDays` dias (sem deixar abaixo do mínimo), descontando o que já foi pedido.
  * Produtos a granel ficam de fora: quem se compra é o pacote de origem, que já soma o consumo do granel.
  */
 export async function getPurchaseSuggestion({ days, coverDays, warehouseId }: PurchaseSuggestionFilters) {
   const since = new Date(Date.now() - days * DAY_MS);
-  const [products, consumption] = await Promise.all([
+  const [products, consumption, onOrderMap] = await Promise.all([
     prisma.product.findMany({
       where: { active: true, sourceProductId: null },
       include: {
@@ -45,17 +46,20 @@ export async function getPurchaseSuggestion({ days, coverDays, warehouseId }: Pu
       orderBy: { name: 'asc' },
     }),
     consumptionSince(since, warehouseId),
+    quantitiesOnOrder(),
   ]);
 
   const rows = products.flatMap((product) => {
+    // O que já foi pedido e ainda não chegou conta como estoque a caminho.
+    const onOrder = onOrderMap.get(product.id) ?? 0;
     const consumed = consumption.get(product.id) ?? 0;
     const quantity = roundQty(product.stockLevels.reduce((sum, level) => sum + level.quantity, 0));
     const minStock = warehouseId ? (product.stockLevels[0]?.minQuantity ?? product.minStock) : product.minStock;
     const dailyAverage = consumed / days;
     const target = Math.max(dailyAverage * coverDays, 0) + minStock;
-    if (quantity >= target || (consumed === 0 && quantity > minStock)) return [];
+    if (quantity + onOrder >= target || (consumed === 0 && quantity + onOrder > minStock)) return [];
 
-    const rawSuggestion = target - quantity;
+    const rawSuggestion = target - quantity - onOrder;
     const suggested = product.fractional ? roundQty(rawSuggestion) : Math.ceil(rawSuggestion - 1e-9);
     if (suggested <= 0) return [];
     return [
@@ -64,9 +68,11 @@ export async function getPurchaseSuggestion({ days, coverDays, warehouseId }: Pu
         sku: product.sku,
         name: product.name,
         unit: product.unit,
+        fractional: product.fractional,
         supplier: product.supplier,
         quantity,
         minStock,
+        onOrder,
         consumed: roundQty(consumed),
         dailyAverage: roundQty(dailyAverage),
         /** Dias até zerar no ritmo atual (null quando não houve consumo). */

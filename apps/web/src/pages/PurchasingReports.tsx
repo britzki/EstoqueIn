@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { PackageCheck, PackageX } from 'lucide-react';
+import { ClipboardList, PackageCheck, PackageX } from 'lucide-react';
 import { api } from '../lib/api';
 import { useWarehouses } from '../lib/hooks';
 import { formatDate, formatMoney, formatNumber } from '../lib/format';
 import {
   Badge,
+  Button,
   Card,
   CardHeader,
   EmptyState,
@@ -19,15 +20,20 @@ import {
   Th,
 } from '../components/ui';
 import { ExportButton } from './ReportsPage';
+import { useAuth } from '../lib/auth';
+import type { PurchaseOrder } from '../lib/types';
+import { OrderDraftModal, OrderModal, type DraftLine } from './purchasing/PurchaseOrderParts';
 
 interface SuggestionRow {
   productId: string;
   sku: string;
   name: string;
   unit: string;
+  fractional: boolean;
   supplier: { id: string; name: string } | null;
   quantity: number;
   minStock: number;
+  onOrder: number;
   consumed: number;
   dailyAverage: number;
   daysLeft: number | null;
@@ -59,7 +65,12 @@ function WarehouseFilter({ value, onChange }: { value: string; onChange: (value:
 
 /** O que comprar: pelo ritmo de vendas, o que acaba antes da próxima compra e quanto pedir. */
 export function PurchaseSuggestionReport() {
+  const { can } = useAuth();
   const [filters, setFilters] = useState({ days: 30, coverDays: 15, warehouseId: '' });
+  const [draft, setDraft] = useState<{ supplier: { id: string; name: string } | null; lines: DraftLine[] } | null>(
+    null,
+  );
+  const [created, setCreated] = useState<PurchaseOrder | null>(null);
   const report = useQuery({
     queryKey: ['reports', 'purchase-suggestion', filters],
     queryFn: () => api.get<Suggestion>('/reports/purchase-suggestion', filters),
@@ -119,7 +130,10 @@ export function PurchaseSuggestionReport() {
             <StatCard label="Custo estimado" value={formatMoney(report.data.summary.estimatedCents)} tone="amber" />
           </div>
           <Card className="mb-6">
-            <CardHeader title="Por fornecedor" description="Para montar o pedido de cada um." />
+            <CardHeader
+              title="Por fornecedor"
+              description="Gere o pedido de cada um: dá para ajustar as quantidades e enviar pelo WhatsApp ou imprimir."
+            />
             <Table>
               <tbody>
                 {report.data.suppliers.map((group) => (
@@ -129,6 +143,33 @@ export function PurchaseSuggestionReport() {
                     </Td>
                     <Td className="text-right">{group.items} produto(s)</Td>
                     <Td className="text-right tabular-nums">{formatMoney(group.estimatedCents)}</Td>
+                    {can('products:write') && (
+                      <Td className="text-right">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          icon={<ClipboardList className="size-4" />}
+                          onClick={() =>
+                            setDraft({
+                              supplier: group.supplier,
+                              lines: report.data.rows
+                                .filter((row) => (row.supplier?.id ?? null) === (group.supplier?.id ?? null))
+                                .map((row) => ({
+                                  productId: row.productId,
+                                  name: row.name,
+                                  sku: row.sku,
+                                  unit: row.unit,
+                                  fractional: row.fractional,
+                                  quantity: row.suggested,
+                                  costCents: row.costCents,
+                                })),
+                            })
+                          }
+                        >
+                          Gerar pedido
+                        </Button>
+                      </Td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -148,6 +189,7 @@ export function PurchaseSuggestionReport() {
                   <Th>Produto</Th>
                   <Th className="hidden lg:table-cell">Fornecedor</Th>
                   <Th className="text-right">Saldo</Th>
+                  <Th className="hidden lg:table-cell text-right">Já pedido</Th>
                   <Th className="hidden sm:table-cell text-right">Vende por dia</Th>
                   <Th>Acaba em</Th>
                   <Th className="text-right">Comprar</Th>
@@ -166,6 +208,9 @@ export function PurchaseSuggestionReport() {
                     <Td className="hidden lg:table-cell">{row.supplier?.name ?? '—'}</Td>
                     <Td className="text-right tabular-nums">
                       {formatNumber(row.quantity)} <span className="text-xs text-slate-500">{row.unit}</span>
+                    </Td>
+                    <Td className="hidden lg:table-cell text-right tabular-nums">
+                      {row.onOrder ? formatNumber(row.onOrder) : '—'}
                     </Td>
                     <Td className="hidden sm:table-cell text-right tabular-nums">{formatNumber(row.dailyAverage)}</Td>
                     <Td>
@@ -191,6 +236,18 @@ export function PurchaseSuggestionReport() {
           </Card>
         </>
       )}
+      {draft && (
+        <OrderDraftModal
+          supplier={draft.supplier}
+          lines={draft.lines}
+          onClose={() => setDraft(null)}
+          onCreated={(order) => {
+            setDraft(null);
+            setCreated(order);
+          }}
+        />
+      )}
+      {created && <OrderModal id={created.id} onClose={() => setCreated(null)} />}
     </>
   );
 }

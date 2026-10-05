@@ -2,7 +2,7 @@ import { PAYMENT_LABEL, formatDateTime, formatMoney } from '../../lib/format';
 import type { CashDetail, PaymentMethod, StoreSettings } from '../../lib/types';
 
 const money = (cents: number) => formatMoney(cents).replace('R$', '').trim();
-const METHODS: PaymentMethod[] = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER'];
+const METHODS: PaymentMethod[] = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER', 'ACCOUNT'];
 
 /** Comprovante de fechamento de caixa para a bobina: fica guardado junto com o dinheiro. */
 export function CashSlip({ cash, settings }: { cash: CashDetail; settings: StoreSettings }) {
@@ -52,6 +52,19 @@ export function CashSlip({ cash, settings }: { cash: CashDetail; settings: Store
         </div>
       ))}
       {rule}
+      {summary.accountReceivedCents > 0 && (
+        <>
+          {METHODS.filter((method) => method !== 'ACCOUNT' && summary.accountReceivedByMethod[method as 'CASH']).map(
+            (method) => (
+              <div key={method} className={row}>
+                <span>Fiado recebido ({PAYMENT_LABEL[method]})</span>
+                <span>{money(summary.accountReceivedByMethod[method as 'CASH'])}</span>
+              </div>
+            ),
+          )}
+          {rule}
+        </>
+      )}
       <div className={row}>
         <span>Troco inicial</span>
         <span>{money(cash.openingCents)}</span>

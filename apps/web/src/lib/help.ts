@@ -183,6 +183,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
     routes: ['/sales/new', '/alerts'],
   },
   {
+    id: 'botoes-rapidos',
+    category: 'Vendas',
+    question: 'Como funcionam os botões rápidos da tela de venda?',
+    answer: [
+      'Logo abaixo do campo de leitura aparecem até 8 produtos: um clique coloca o produto na venda, sem bipar nem buscar. Produto por peso pede a quantidade.',
+      'Os marcados com estrela são os escolhidos por você: no cadastro do produto, marque "Botão rápido na tela de venda". O espaço que sobrar é preenchido com os mais vendidos dos últimos 30 dias.',
+    ],
+    keywords: ['botao rapido', 'botoes', 'atalho de produto', 'favorito', 'estrela', 'mais vendidos', 'clique'],
+    routes: ['/sales/new', '/products'],
+  },
+  {
     id: 'cliente-na-venda',
     category: 'Vendas',
     question: 'Como coloco o cliente na venda?',
@@ -550,9 +561,62 @@ export const HELP_ARTICLES: HelpArticle[] = [
   {
     id: 'fiado',
     category: 'Clientes',
-    question: 'Dá para vender fiado?',
-    answer: ['Ainda não. A venda fiada está nos planos. Se for importante para você, fale com o suporte.'],
-    keywords: ['fiado', 'pendura', 'conta', 'prazo', 'depois', 'caderneta'],
+    question: 'Como vendo fiado?',
+    answer: [
+      '1. Na tela de venda, escolha o cliente (ou cadastre na hora).',
+      '2. Na forma de pagamento, clique em Fiado. Aparece quanto ele já deve e o limite, se houver.',
+      '3. Finalize. A notinha sai com o total em aberto e a linha para o cliente assinar.',
+      'Também dá para pagar parte na hora: marque "Dividir em duas formas de pagamento" e escolha Fiado para o restante.',
+      'Se a venda for cancelada ou um item for devolvido com "Abater do fiado", a dívida é corrigida sozinha.',
+    ],
+    keywords: ['fiado', 'pendura', 'pendurar', 'conta', 'prazo', 'depois', 'caderneta', 'anotar', 'marcar'],
+    routes: ['/sales/new', '/customers'],
+  },
+  {
+    id: 'receber-fiado',
+    category: 'Clientes',
+    question: 'O cliente veio pagar o fiado. Como registro?',
+    answer: [
+      '1. Em Clientes, clique no cliente (ou nele, na lista Fiado).',
+      '2. Clique em Receber pagamento, informe o valor e a forma (dinheiro, Pix ou cartão). Pode ser só uma parte.',
+      'Pagamento em dinheiro entra na conferência do caixa aberto. O extrato mostra cada compra, pagamento e o saldo.',
+    ],
+    keywords: ['pagar fiado', 'pagou', 'receber', 'quitar', 'abater', 'pagamento', 'acertar conta', 'baixar fiado'],
+    routes: ['/customers', '/cash'],
+  },
+  {
+    id: 'quem-deve',
+    category: 'Clientes',
+    question: 'Como vejo quem está me devendo e cobro?',
+    answer: [
+      'Em Clientes, o quadro Fiado mostra quem deve, quanto, desde quando e o último pagamento. O total a receber aparece no topo.',
+      'O botão Cobrar abre o WhatsApp do cliente com uma mensagem educada e o valor em aberto.',
+    ],
+    keywords: ['devendo', 'deve', 'devedores', 'cobrar', 'cobranca', 'em aberto', 'a receber', 'caderneta'],
+    routes: ['/customers'],
+  },
+  {
+    id: 'limite-fiado',
+    category: 'Clientes',
+    question: 'Dá para colocar um limite de fiado para o cliente?',
+    answer: [
+      'Sim. Em Clientes, edite o cliente e preencha o Limite de fiado. Em branco, não há limite.',
+      'A venda que passar do limite é recusada no caixa. Só gerente ou administrador define o limite.',
+    ],
+    keywords: ['limite', 'limite de fiado', 'maximo', 'teto', 'credito'],
+    routes: ['/customers'],
+  },
+  {
+    id: 'fiado-caderno',
+    category: 'Clientes',
+    question: 'Tenho fiados anotados no caderno. Como passo para o sistema?',
+    answer: [
+      '1. Em Clientes, cadastre o cliente (ou abra o que já existe) e clique em Editar.',
+      '2. Preencha "Fiado anterior, do caderno" com o valor que ele deve hoje e salve.',
+      'O valor entra no saldo do fiado como a dívida mais antiga e pode ser pago normalmente, inteiro ou em partes. Só gerente ou administrador lança esse valor.',
+    ],
+    keywords: ['caderno', 'anotado', 'antigo', 'anterior', 'passar', 'migrar', 'divida antiga', 'saldo anterior'],
+    routes: ['/customers'],
   },
 
   /* ---------- Relatórios ---------- */
@@ -565,6 +629,30 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
     keywords: ['quanto vendi', 'faturamento', 'lucro', 'vendas do mes', 'vendas do dia', 'relatorio', 'ganhei'],
     routes: ['/reports'],
+  },
+  {
+    id: 'pedido-fornecedor',
+    category: 'Estoque',
+    question: 'Como faço um pedido para o fornecedor?',
+    answer: [
+      '1. Em Relatórios → Sugestão de compra, clique em Gerar pedido ao lado do fornecedor.',
+      '2. Confira as quantidades sugeridas, tire o que não quiser e escreva observações (prazo, forma de pagamento).',
+      '3. Salve e clique em Enviar pelo WhatsApp (precisa do telefone no cadastro do fornecedor) ou em Imprimir / PDF.',
+      'Enquanto o pedido não chega, a sugestão de compra não pede esses produtos de novo.',
+    ],
+    keywords: ['pedido', 'pedir', 'encomendar', 'fornecedor', 'comprar', 'orcamento', 'mandar pedido', 'whatsapp'],
+    routes: ['/reports', '/purchase-orders'],
+  },
+  {
+    id: 'pedido-chegou',
+    category: 'Estoque',
+    question: 'O pedido chegou. O que faço?',
+    answer: [
+      'Dê entrada na mercadoria pela Entrada por NF-e (com o XML da nota) ou por Nova movimentação → Entrada.',
+      'Depois, em Pedidos de compra, abra o pedido e clique em Marcar como recebido. Se o fornecedor não for entregar, use Cancelar pedido.',
+    ],
+    keywords: ['pedido chegou', 'chegou', 'recebido', 'entregou', 'pedido de compra', 'receber pedido'],
+    routes: ['/purchase-orders'],
   },
   {
     id: 'sugestao-compra',
@@ -659,6 +747,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'O programa faz um backup por dia no próprio computador e outro antes de cada atualização.',
       'Para se proteger se o computador estragar ou for roubado, ative em Configurações → Cópia de segurança fora do computador, apontando para um pendrive ou uma pasta do Google Drive/OneDrive. Uma cópia vai para lá todo dia.',
       'Backup na hora: menu Arquivo → Fazer backup agora (Ctrl+B).',
+      'Se a cópia fora do computador não estiver configurada ou estiver falhando, aparece um aviso na tela inicial.',
     ],
     keywords: ['backup', 'copia', 'seguranca', 'perder dados', 'pendrive', 'google drive', 'onedrive', 'salvar'],
     routes: ['/settings'],

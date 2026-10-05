@@ -33,6 +33,15 @@ const QUESTIONS: Array<[string, string]> = [
   ['troquei de computador', 'computador-novo'],
   ['avisar cliente que a ração vai acabar', 'recompra'],
   ['imprimir etiqueta de preço', 'etiquetas'],
+  ['vender fiado', 'fiado'],
+  ['quero pendurar na conta do cliente', 'fiado'],
+  ['o cliente veio pagar o que devia', 'receber-fiado'],
+  ['quem está me devendo', 'quem-deve'],
+  ['colocar limite de fiado', 'limite-fiado'],
+  ['como mando o pedido pro fornecedor', 'pedido-fornecedor'],
+  ['o pedido chegou', 'pedido-chegou'],
+  ['botão rápido da ração', 'botoes-rapidos'],
+  ['passar os fiados do caderno', 'fiado-caderno'],
 ];
 
 describe('Central de ajuda', () => {

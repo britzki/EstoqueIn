@@ -23,6 +23,7 @@ import { settingsRoutes } from './modules/settings/settings.routes.js';
 import { auditRoutes } from './modules/audit/audit.routes.js';
 import { cashRoutes } from './modules/cash/cash.routes.js';
 import { customersRoutes } from './modules/customers/customers.routes.js';
+import { purchaseOrdersRoutes } from './modules/purchasing/purchase-orders.routes.js';
 
 interface AppOptions {
   /** Pasta do front-end compilado. Quando informada, a API também serve a interface. */
@@ -71,6 +72,7 @@ export function createApp({ webDist }: AppOptions = {}) {
   api.use('/sales', salesRoutes);
   api.use('/cash', cashRoutes);
   api.use('/customers', customersRoutes);
+  api.use('/purchase-orders', purchaseOrdersRoutes);
   api.use('/settings', settingsRoutes);
   api.use('/audit', requirePermission('audit:read'), auditRoutes);
   app.use('/api', api);

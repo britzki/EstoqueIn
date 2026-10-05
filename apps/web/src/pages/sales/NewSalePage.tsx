@@ -1,12 +1,24 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Banknote, CircleCheckBig, CreditCard, Printer, QrCode, ScanBarcode, ShoppingCart, Trash2 } from 'lucide-react';
+import {
+  Banknote,
+  CircleCheckBig,
+  CreditCard,
+  NotebookPen,
+  Printer,
+  QrCode,
+  ScanBarcode,
+  ShoppingCart,
+  Star,
+  Trash2,
+} from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { useCurrentCash, useDebounced, useSaleWarehouse, useStoreSettings } from '../../lib/hooks';
 import { useToast } from '../../lib/toast';
 import { centsToInput, formatMoney, formatNumber, parseMoneyInput, quantityStep } from '../../lib/format';
 import type { Paginated, PaymentMethod, Product, ResolvedCode, SaleDetail, SaleProduct } from '../../lib/types';
+import { useAuth } from '../../lib/auth';
 import { useReceiptPrinter } from '../../components/Receipt';
 import { CustomerPicker, type CustomerChoice } from '../../components/CustomerPicker';
 import { Button, Card, EmptyState, ErrorMessage, Input, PageHeader, Select } from '../../components/ui';
@@ -24,6 +36,7 @@ const METHODS: Array<{ value: PaymentMethod; label: string; icon: typeof Banknot
   { value: 'PIX', label: 'Pix', icon: QrCode },
   { value: 'DEBIT', label: 'Débito', icon: CreditCard },
   { value: 'CREDIT', label: 'Crédito', icon: CreditCard },
+  { value: 'ACCOUNT', label: 'Fiado', icon: NotebookPen },
 ];
 
 const toNumber = (text: string) => Number(text.replace(',', '.'));
@@ -62,6 +75,14 @@ export function NewSalePage() {
     queryFn: () => api.get<Paginated<Product>>('/products', { search, active: true, pageSize: 6 }),
     enabled: search.length >= 2 && !isCode,
     select: (page) => page.data,
+  });
+
+  const { can } = useAuth();
+  const { data: quickProducts = [] } = useQuery({
+    queryKey: ['products', 'quick', activeWarehouse],
+    queryFn: () =>
+      api.get<Array<SaleProduct & { quickSale: boolean }>>('/sales/quick-products', { warehouseId: activeWarehouse }),
+    enabled: Boolean(activeWarehouse) && can('sales:create'),
   });
 
   useEffect(() => {
@@ -129,7 +150,35 @@ export function NewSalePage() {
   });
   const cashShort = !split && method === 'CASH' && received !== '' && receivedCents < total;
   const splitInvalid = split && (firstCents <= 0 || firstCents >= total);
-  const canFinish = cart.length > 0 && !invalidLine && total > 0 && !cashShort && !splitInvalid && !cashClosed;
+
+  // Fiado: quanto vai para a conta do cliente nesta venda.
+  const accountCents = split
+    ? (method === 'ACCOUNT' ? firstCents : 0) + (otherMethod === 'ACCOUNT' ? total - firstCents : 0)
+    : method === 'ACCOUNT'
+      ? total
+      : 0;
+  const usesAccount = method === 'ACCOUNT' || (split && otherMethod === 'ACCOUNT');
+  const { data: customerAccount } = useQuery({
+    queryKey: ['customers', 'detail', customer.customer?.id],
+    queryFn: () =>
+      api.get<{ balanceCents: number; creditLimitCents: number | null }>(`/customers/${customer.customer!.id}`),
+    enabled: usesAccount && Boolean(customer.customer),
+  });
+  const accountNeedsCustomer = usesAccount && !customer.customer;
+  const overLimit =
+    customerAccount?.creditLimitCents !== null &&
+    customerAccount !== undefined &&
+    customerAccount.balanceCents + accountCents > (customerAccount.creditLimitCents ?? 0);
+
+  const canFinish =
+    cart.length > 0 &&
+    !invalidLine &&
+    total > 0 &&
+    !cashShort &&
+    !splitInvalid &&
+    !cashClosed &&
+    !accountNeedsCustomer &&
+    !overLimit;
 
   const finish = useMutation({
     mutationFn: () =>
@@ -242,21 +291,23 @@ export function NewSalePage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <div className="relative border-b border-slate-100 p-4">
-            <ScanBarcode className="pointer-events-none absolute top-1/2 left-7 size-5 -translate-y-1/2 text-slate-400" />
-            <input
-              ref={scanRef}
-              autoFocus
-              value={code}
-              onChange={(e) => {
-                setCode(e.target.value);
-                setScanError(null);
-              }}
-              onKeyDown={onScanKey}
-              placeholder="Código de barras, etiqueta da balança ou nome do produto"
-              autoComplete="off"
-              aria-label="Leitura do produto"
-              className="block h-12 w-full rounded-lg border border-slate-300 bg-white pr-3 pl-11 text-base shadow-sm placeholder:text-slate-400 focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 focus:outline-none"
-            />
+            <div className="relative">
+              <ScanBarcode className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-slate-400" />
+              <input
+                ref={scanRef}
+                autoFocus
+                value={code}
+                onChange={(e) => {
+                  setCode(e.target.value);
+                  setScanError(null);
+                }}
+                onKeyDown={onScanKey}
+                placeholder="Código de barras, etiqueta da balança ou nome do produto"
+                autoComplete="off"
+                aria-label="Leitura do produto"
+                className="block h-12 w-full rounded-lg border border-slate-300 bg-white pr-3 pl-11 text-base shadow-sm placeholder:text-slate-400 focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 focus:outline-none"
+              />
+            </div>
             {search.length >= 2 && !isCode && matches.length > 0 && code.trim() !== '' && (
               <ul className="absolute inset-x-4 z-20 mt-1 max-h-72 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
                 {matches.map((product) => (
@@ -279,6 +330,26 @@ export function NewSalePage() {
               </ul>
             )}
             {scanError && <p className="mt-2 text-sm text-red-600">{scanError}</p>}
+            {quickProducts.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2" aria-label="Botões rápidos">
+                {quickProducts.map((product) => (
+                  <button
+                    key={product.id}
+                    type="button"
+                    onClick={() => addToCart(product, product.fractional ? null : 1)}
+                    title={product.quickSale ? 'Marcado como botão rápido' : 'Entre os mais vendidos'}
+                    className="inline-flex max-w-[14rem] items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-left text-sm hover:border-brand-300 hover:bg-brand-50"
+                  >
+                    {product.quickSale && <Star className="size-3.5 shrink-0 fill-amber-400 text-amber-400" />}
+                    <span className="truncate font-medium text-slate-800">{product.name}</span>
+                    <span className="shrink-0 text-xs text-slate-500 tabular-nums">
+                      {formatMoney(product.priceCents)}
+                      {product.fractional && `/${product.unit.toLowerCase()}`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {cart.length === 0 ? (
@@ -390,6 +461,7 @@ export function NewSalePage() {
                 aria-pressed={method === value}
                 className={cn(
                   'flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors',
+                  value === 'ACCOUNT' && 'col-span-2',
                   method === value
                     ? 'border-brand-700 bg-brand-50 text-brand-800'
                     : 'border-slate-300 text-slate-700 hover:bg-slate-50',
@@ -470,6 +542,21 @@ export function NewSalePage() {
               Cliente (opcional)
             </label>
             <CustomerPicker value={customer} onChange={setCustomer} />
+            {accountNeedsCustomer && (
+              <p className="mt-2 text-sm text-amber-700">Para vender fiado, escolha ou cadastre o cliente.</p>
+            )}
+            {usesAccount && customerAccount && (
+              <p className={cn('mt-2 text-sm', overLimit ? 'text-red-600' : 'text-slate-600')}>
+                Fiado em aberto: {formatMoney(customerAccount.balanceCents)}
+                {customerAccount.creditLimitCents !== null && (
+                  <> · limite {formatMoney(customerAccount.creditLimitCents)}</>
+                )}
+                {overLimit && ' · esta venda passa do limite'}
+                {!overLimit && accountCents > 0 && (
+                  <> · depois desta venda: {formatMoney(customerAccount.balanceCents + accountCents)}</>
+                )}
+              </p>
+            )}
           </div>
 
           <Button

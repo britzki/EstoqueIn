@@ -30,6 +30,7 @@ const emptyForm = {
   scaleCode: '',
   supplierId: '',
   description: '',
+  quickSale: false,
   active: true,
 };
 
@@ -69,6 +70,7 @@ export function ProductFormModal({
         scaleCode: product.scaleCode ?? '',
         supplierId: product.supplierId ?? '',
         description: product.description ?? '',
+        quickSale: product.quickSale ?? false,
         active: product.active,
       };
     }
@@ -109,6 +111,7 @@ export function ProductFormModal({
         scaleCode: form.fractional ? form.scaleCode : '',
         supplierId: form.supplierId,
         description: form.description,
+        quickSale: form.quickSale,
         ...(product && { active: form.active }),
       };
       return product ? api.patch<Product>(`/products/${product.id}`, body) : api.post<Product>('/products', body);
@@ -382,6 +385,16 @@ export function ProductFormModal({
         <Field label="Descrição" className="sm:col-span-2">
           {(id) => <Textarea id={id} value={form.description} onChange={(e) => set('description')(e.target.value)} />}
         </Field>
+
+        <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
+          <input
+            type="checkbox"
+            checked={form.quickSale}
+            onChange={(e) => set('quickSale')(e.target.checked)}
+            className="size-4 accent-brand-700"
+          />
+          Botão rápido na tela de venda (para os produtos que mais saem, como a ração a granel)
+        </label>
 
         {product && (
           <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">

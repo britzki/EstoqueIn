@@ -20,6 +20,7 @@ Roda de duas formas com o **mesmo código**: como aplicação web e como **progr
 | **Estoques** | Vários locais (depósito, lojas), saldo por local e **mínimo específico por estoque** |
 | **Vendas (caixa)** | Leitura por código de barras ou **etiqueta da balança**, total, desconto, troco, pagamento em uma ou duas formas, **notinha** para impressora térmica, cancelamento, **devolução parcial** com estorno proporcional e relatório com lucro |
 | **Fechamento de caixa** | Abertura com o troco, sangria e suprimento, resumo por forma de pagamento e fechamento com o dinheiro contado: a diferença (falta ou sobra) fica registrada e o comprovante sai na bobina. Com **troco fixo** (ex.: R$ 250), o fechamento diz quanto retirar para sobrar esse valor, e a abertura do dia seguinte já vem preenchida e avisa se não bater |
+| **Fiado (caderneta digital)** | Venda no fiado (inteira ou só uma parte), com limite opcional por cliente e o **fiado anterior** de cada um passado do caderno. Mostra quem deve, quanto e desde quando, recebe pagamentos parciais, tem o extrato de cada cliente e o botão de cobrança pelo WhatsApp. Cancelamentos e devoluções abatem a dívida sozinhos, e o fiado recebido em dinheiro entra na conferência do caixa |
 | **Clientes e recompra** | Cadastro rápido na hora da venda (nome e WhatsApp), histórico de compras e **lembrete de recompra**: pelo intervalo médio entre as compras, o sistema avisa quem está para voltar e abre a conversa no WhatsApp com a mensagem pronta |
 | **Venda por peso e granel** | Produtos fracionados (kg, L, m) com 3 casas decimais; **fracionamento**: abrir um saco fechado transforma 1 saco em 15 kg de granel, levando o custo proporcional |
 | **Entrada por NF-e (XML)** | Importa o XML da nota do fornecedor: cadastra fornecedor e produtos novos, reconhece itens pelo código do fornecedor, código de barras ou nome, converte embalagens (CX, FD) e dá entrada com o **custo real** (frete, IPI e ICMS-ST rateados) |
@@ -31,7 +32,8 @@ Roda de duas formas com o **mesmo código**: como aplicação web e como **progr
 | **Usuários e permissões** | 4 perfis (Administrador, Gerente, Operador, Somente leitura) com matriz de permissões aplicada na API e na interface |
 | **Registro de alterações** | Quem cadastrou ou alterou o quê e quando, com o valor antigo e o novo (preços, cadastros, usuários, configurações, importações, cancelamentos). Só leitura |
 | **Senhas** | Troca pelo próprio usuário, senha temporária com troca obrigatória e **recuperação de acesso do administrador sem internet**, pelo menu do programa instalado |
-| **Relatórios** | Posição de estoque valorizada, **sugestão de compra** (pelo consumo médio, agrupada por fornecedor), **produtos parados** (dinheiro empatado), movimentações por período e **curva ABC**, todos exportáveis em CSV (abre direto no Excel) |
+| **Pedidos de compra** | A sugestão de compra vira pedido para cada fornecedor: ajusta as quantidades, envia pelo WhatsApp ou imprime/salva em PDF. Enquanto o pedido não chega, a sugestão não pede os mesmos produtos de novo |
+| **Relatórios** | Posição de estoque valorizada, **sugestão de compra** (pelo consumo médio, descontando o que já foi pedido, agrupada por fornecedor), **produtos parados** (dinheiro empatado), movimentações por período e **curva ABC**, todos exportáveis em CSV (abre direto no Excel) |
 | **Importação CSV** | Pré-visualização (dry-run) com erros por linha, separador `;` ou `,`, UTF-8 ou Windows-1252 (Excel), cria ou atualiza por SKU; aceita o **saldo atual** de cada produto, para migrar de outro sistema numa planilha só |
 | **Código de barras** | Leitura via leitor USB (o campo de produto entende o "Enter" do leitor), geração de EAN-13 interno e **impressão de etiquetas** |
 | **Integrações externas** | Consulta de produto pelo código de barras na [Open Food Facts](https://world.openfoodfacts.org) e **webhook** de alertas (compatível com Discord, Slack, n8n, Zapier) |
@@ -121,6 +123,8 @@ Decisões que garantem a consistência:
 - **Cliente na venda.** Busca por nome ou telefone, ou cadastro na hora. A venda entra no histórico do cliente e alimenta o lembrete de recompra.
 - **Notinha.** Comprovante para bobina de 58 ou 80 mm, com os dados da loja. No programa instalado, sai direto na impressora escolhida, sem janela de confirmação. **Não é documento fiscal**: a emissão de NFC-e não faz parte do sistema.
 - **Pensado para o teclado:** F2 finaliza a venda e F4 volta para o campo de leitura.
+- **Botões rápidos:** até 8 produtos na tela de venda, entrando com um clique: os marcados no cadastro e, completando, os mais vendidos dos últimos 30 dias.
+- **Fiado:** forma de pagamento que exige o cliente, mostra a dívida e o limite na hora e imprime na notinha o total em aberto com linha para assinatura. O saldo nunca é gravado: é recalculado a partir das vendas, devoluções e pagamentos, então não há como "desencontrar".
 
 ## Entrada de mercadoria pelo XML da NF-e
 
@@ -264,6 +268,7 @@ flowchart LR
 - **Migrations na inicialização.** Ao instalar uma versão nova, o banco é atualizado sozinho, sem depender da CLI do Prisma.
 - **Backup automático diário** (mantém os 10 mais recentes) e, no menu **Arquivo**, backup manual e restauração. Antes de restaurar, os dados atuais são copiados.
 - **Cópia fora do computador.** Em Configurações, escolhe-se um pendrive ou uma pasta do Google Drive/OneDrive. Uma vez por dia o banco é copiado para lá (as 7 últimas cópias ficam guardadas). A cópia é gerada primeiro no disco local e só então enviada com nome provisório, para o programa de sincronização nunca pegar um arquivo pela metade. Pendrive desconectado não trava nada: o erro aparece na tela e o sistema tenta de novo a cada hora.
+- **Aviso na tela inicial** quando a cópia fora do computador não está configurada, está falhando (pendrive desconectado) ou parada há mais de 2 dias.
 - **Arquivo de diagnóstico.** **Ajuda → Gerar arquivo de diagnóstico** salva um `.txt` com versão, estado do banco (migrations, contagens, verificação de integridade), backups e o final do log. Não leva o banco nem dados de clientes, produtos ou vendas.
 - **Primeira execução:** cria o administrador e o estoque principal. As contas de demonstração só aparecem se a demonstração for carregada.
 - **Troca de nome sem perder dados.** O programa se chamava StockFlow; na primeira abertura, o EstoqueIn copia os dados da pasta antiga (`%APPDATA%\StockFlow`), sem alterá-la.
@@ -314,6 +319,10 @@ Todas as rotas (exceto login e health) exigem `Authorization: Bearer <token>`.
 | `GET/POST/PATCH` | `/api/customers` | Clientes (busca por nome ou telefone) | `sales:create` para gravar |
 | `GET` | `/api/customers/reminders?days=7` | Lembretes de recompra | autenticado |
 | `GET` | `/api/reports/purchase-suggestion` · `stale-products` | Sugestão de compra e produtos parados (JSON ou CSV) | `reports:read` |
+| `GET` | `/api/customers/debtors` · `/api/customers/:id/account` | Quem deve no fiado e extrato do cliente | autenticado |
+| `POST` | `/api/customers/:id/payments` | Recebe pagamento de fiado (total ou parcial) | `sales:create` |
+| `GET/POST` | `/api/purchase-orders` · `/:id/status` | Pedidos de compra: criar, listar, marcar como recebido ou cancelado | `products:write` para gravar |
+| `GET` | `/api/sales/quick-products` | Botões rápidos da tela de venda | `sales:create` |
 | `GET` | `/api/reports/sales` | Faturamento, lucro e formas de pagamento (JSON ou CSV) | `reports:read` |
 | `GET/PUT` | `/api/settings` | Dados da loja, notinha e balança | `settings:manage` para gravar |
 | `GET` | `/api/audit` | Registro de alterações (não há rota para editar ou apagar) | `audit:read` |
@@ -338,7 +347,7 @@ Os campos `text` e `content` permitem apontar o webhook direto para Slack ou Dis
 
 ## Testes
 
-136 testes cobrindo as regras de negócio pela API real (banco SQLite descartável, criado a partir das migrations):
+147 testes cobrindo as regras de negócio pela API real (banco SQLite descartável, criado a partir das migrations):
 
 - fluxo entrada → saldo → mínimo → alerta (abrir, escalar, resolver, mínimo por estoque, evento após commit)
 - saída sem saldo (422, sem efeitos colaterais) e transferência atômica
@@ -354,6 +363,8 @@ Os campos `text` e `content` permitem apontar o webhook direto para Slack ou Dis
 - caixa: venda bloqueada com o caixa fechado, um caixa por estoque, dinheiro esperado com troco, sangria, suprimento, venda cancelada e devolução, diferença no fechamento, troco fixo (retirada, valor que fica na gaveta e conferência na abertura seguinte) e registro de alterações
 - devolução parcial: estorno proporcional ao desconto, volta ao estoque, limite somando devoluções anteriores, permissão e cancelamento bloqueado depois da devolução
 - estoque negativo: recusado por padrão; permitido, gera o alerta próprio, e a saída manual continua protegida
+- fiado: exige cliente, venda parcial no fiado, limite (só o gerente define), pagamentos parciais, "em aberto desde" pela dívida mais antiga, cancelamento e devolução abatendo a dívida e o fiado recebido no caixa
+- pedidos de compra (a sugestão desconta o que já foi pedido) e botões rápidos (marcados primeiro, depois os mais vendidos)
 - clientes e lembrete de recompra (intervalo médio, atrasados, vendas canceladas ignoradas)
 - sugestão de compra (consumo líquido de devoluções, granel pelo pacote de origem, agrupamento por fornecedor) e produtos parados
 - quantidades fracionadas: precisão de 3 casas, saldo exato após somas e subtrações, produto inteiro recusa fração, inventário em kg
@@ -368,7 +379,6 @@ A busca da central de ajuda tem os próprios testes (`npm test -w @estoquein/web
 O planejamento completo, com as decisões já tomadas, está em [docs/ROADMAP.md](docs/ROADMAP.md).
 
 - [ ] Leitura de código de barras pela câmera do celular
-- [ ] Pedido de compra enviado ao fornecedor a partir da sugestão de compra
 - [ ] Lotes e validade (FEFO)
 - [ ] Notificações em tempo real (Server-Sent Events)
 - [ ] Testes end-to-end com Playwright

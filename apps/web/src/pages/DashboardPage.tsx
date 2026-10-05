@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Activity, ArrowRight, Bell, CircleDollarSign, Package, TriangleAlert } from 'lucide-react';
 import { api } from '../lib/api';
+import { BackupWarning } from '../components/BackupWarning';
 import { useAuth } from '../lib/auth';
 import {
   ALERT_LABEL,
@@ -68,6 +69,8 @@ export function DashboardPage() {
         title={`Olá, ${session?.user.name.split(' ')[0]}`}
         description="Resumo da operação nos seus estoques."
       />
+
+      <BackupWarning />
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard

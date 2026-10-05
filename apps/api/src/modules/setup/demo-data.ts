@@ -251,6 +251,9 @@ const PRODUCTS: ProductSeed[] = [
 /** Apaga todos os dados (usado antes de recarregar a demonstração). */
 export async function clearDatabase() {
   await prisma.auditLog.deleteMany();
+  await prisma.purchaseOrderItem.deleteMany();
+  await prisma.purchaseOrder.deleteMany();
+  await prisma.customerPayment.deleteMany();
   await prisma.saleReturnItem.deleteMany();
   await prisma.saleReturn.deleteMany();
   await prisma.cashMovement.deleteMany();
