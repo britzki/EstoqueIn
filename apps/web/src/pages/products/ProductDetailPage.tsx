@@ -35,6 +35,7 @@ import {
 } from '../../components/ui';
 import { ProductFormModal } from './ProductFormModal';
 import { LabelPrintModal } from './LabelPrintModal';
+import { KitEditor } from './KitEditor';
 
 export function ProductDetailPage() {
   const { id = '' } = useParams();
@@ -90,6 +91,7 @@ export function ProductDetailPage() {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{p.name}</h1>
             {!p.active && <Badge>Inativo</Badge>}
+            {p.isKit && <Badge tone="violet">Kit</Badge>}
           </div>
           <p className="mt-1 text-sm text-slate-500">
             {p.sku} · {p.category ?? 'Sem categoria'} · {p.supplier?.name ?? 'Sem fornecedor'}
@@ -101,7 +103,7 @@ export function ProductDetailPage() {
               Editar
             </Button>
           )}
-          {can('products:write') && p.active && !isBulk && !hasBulk && !p.fractional && (
+          {can('products:write') && p.active && !isBulk && !hasBulk && !p.fractional && !p.isKit && (
             <Button variant="secondary" icon={<PackageOpen className="size-4" />} onClick={() => setCreatingBulk(true)}>
               Criar versão a granel
             </Button>
@@ -115,7 +117,7 @@ export function ProductDetailPage() {
               Abrir para granel
             </LinkButton>
           )}
-          {can('stock:move') && p.active && (
+          {can('stock:move') && p.active && !p.isKit && (
             <LinkButton to={`/movements/new?productId=${p.id}`} icon={<ArrowLeftRight className="size-4" />}>
               Movimentar
             </LinkButton>
@@ -152,7 +154,19 @@ export function ProductDetailPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {p.isKit && p.kit && (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatCard label="Kits disponíveis" value={formatNumber(p.kit.available)} hint="Pelo estoque dos produtos" />
+          <StatCard label="Custo do kit" value={formatMoney(p.kit.costCents)} hint="Soma dos custos médios" />
+          <StatCard
+            label="Preço de venda"
+            value={formatMoney(p.priceCents)}
+            hint={`Margem ${formatPercent(p.priceCents > 0 ? (p.priceCents - p.kit.costCents) / p.priceCents : 0)}`}
+          />
+        </div>
+      )}
+
+      <div className={p.isKit ? 'hidden' : 'grid grid-cols-2 gap-4 lg:grid-cols-4'}>
         <StatCard
           label="Saldo total"
           value={`${formatNumber(p.totalQuantity)} ${p.unit}`}
@@ -168,7 +182,8 @@ export function ProductDetailPage() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        {p.isKit && <KitEditor product={p} editable={can('products:write')} />}
+        <Card className={p.isKit ? 'hidden' : 'lg:col-span-2'}>
           <CardHeader
             title="Saldo por estoque"
             description="O mínimo pode ser ajustado por estoque; vazio usa o padrão do produto."

@@ -31,6 +31,7 @@ const emptyForm = {
   supplierId: '',
   description: '',
   quickSale: false,
+  isKit: false,
   active: true,
 };
 
@@ -71,6 +72,7 @@ export function ProductFormModal({
         supplierId: product.supplierId ?? '',
         description: product.description ?? '',
         quickSale: product.quickSale ?? false,
+        isKit: product.isKit ?? false,
         active: product.active,
       };
     }
@@ -112,6 +114,7 @@ export function ProductFormModal({
         supplierId: form.supplierId,
         description: form.description,
         quickSale: form.quickSale,
+        isKit: form.isKit,
         ...(product && { active: form.active }),
       };
       return product ? api.patch<Product>(`/products/${product.id}`, body) : api.post<Product>('/products', body);
@@ -385,6 +388,24 @@ export function ProductFormModal({
         <Field label="Descrição" className="sm:col-span-2">
           {(id) => <Textarea id={id} value={form.description} onChange={(e) => set('description')(e.target.value)} />}
         </Field>
+
+        {!source && (
+          <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={form.isKit}
+              onChange={(e) =>
+                setForm((current) => ({
+                  ...current,
+                  isKit: e.target.checked,
+                  ...(e.target.checked && { fractional: false }),
+                }))
+              }
+              className="size-4 accent-brand-700"
+            />
+            É um kit (vários produtos vendidos juntos com preço próprio; os itens são escolhidos na página do produto)
+          </label>
+        )}
 
         <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
           <input

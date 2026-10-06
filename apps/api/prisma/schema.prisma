@@ -57,19 +57,23 @@ model User {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  movements          StockMovement[]
-  inventoriesCreated Inventory[]
-  alertsAcknowledged StockAlert[]
-  nfeImports         NfeImport[]
-  sales              Sale[]            @relation("SaleUser")
-  salesCancelled     Sale[]            @relation("SaleCancelledBy")
-  auditLogs          AuditLog[]
-  cashSessionsOpened CashSession[]     @relation("CashOpenedBy")
-  cashSessionsClosed CashSession[]     @relation("CashClosedBy")
-  cashMovements      CashMovement[]
-  saleReturns        SaleReturn[]
-  customerPayments   CustomerPayment[]
-  purchaseOrders     PurchaseOrder[]
+  movements                 StockMovement[]
+  inventoriesCreated        Inventory[]
+  alertsAcknowledged        StockAlert[]
+  nfeImports                NfeImport[]
+  sales                     Sale[]            @relation("SaleUser")
+  salesCancelled            Sale[]            @relation("SaleCancelledBy")
+  auditLogs                 AuditLog[]
+  cashSessionsOpened        CashSession[]     @relation("CashOpenedBy")
+  cashSessionsClosed        CashSession[]     @relation("CashClosedBy")
+  cashMovements             CashMovement[]
+  saleReturns               SaleReturn[]
+  customerPayments          CustomerPayment[] @relation("CustomerPaymentUser")
+  purchaseOrders            PurchaseOrder[]
+  customerPaymentsCancelled CustomerPayment[] @relation("CustomerPaymentCancelledBy")
+  promotionsCreated         Promotion[]
+  billsCreated              Bill[]            @relation("BillCreatedBy")
+  billsPaid                 Bill[]            @relation("BillPaidBy")
 }
 
 model Supplier {
@@ -89,6 +93,7 @@ model Supplier {
   supplierProducts SupplierProduct[]
   nfeImports       NfeImport[]
   purchaseOrders   PurchaseOrder[]
+  bills            Bill[]
 
   @@index([name])
 }
@@ -132,6 +137,8 @@ model Product {
   scaleCode       String?  @unique
   // Aparece como botão rápido na tela de venda.
   quickSale       Boolean  @default(false)
+  // Kit: vendido com preço próprio, baixa o estoque dos produtos que o compõem.
+  isKit           Boolean  @default(false)
   supplierId      String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -146,6 +153,11 @@ model Product {
   supplierProducts SupplierProduct[]
   purchaseItems    PurchaseOrderItem[]
   saleItems        SaleItem[]
+  kitItems         KitItem[]           @relation("KitParent")
+  kitUsages        KitItem[]           @relation("KitComponent")
+  promotions       Promotion[]
+  loyaltyQualify   LoyaltyRule[]       @relation("LoyaltyQualify")
+  loyaltyRewards   LoyaltyRule[]       @relation("LoyaltyReward")
 
   @@index([name])
   @@index([category])
@@ -346,17 +358,26 @@ model Sale {
 }
 
 model SaleItem {
-  id             String @id @default(cuid())
-  saleId         String
-  productId      String
-  description    String // nome do produto no momento da venda
-  unit           String
-  quantity       Float
-  unitPriceCents Int
-  totalCents     Int
-  unitCostCents  Int
+  id                 String  @id @default(cuid())
+  saleId             String
+  productId          String
+  description        String // nome do produto no momento da venda
+  unit               String
+  quantity           Float
+  unitPriceCents     Int
+  totalCents         Int
+  unitCostCents      Int
+  // Desconto de promoção "leve X, pague Y" neste item (já descontado do total do item).
+  promoDiscountCents Int     @default(0)
+  promotionId        String?
+  // Brinde do cartão fidelidade: sai a R$ 0,00 e conta como resgate.
+  loyaltyRuleId      String?
+  // Kit: composição no momento da venda (JSON [{productId, quantity, unitCostCents}]), para devolução e cancelamento.
+  kitComponents      String?
 
   sale        Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  promotion   Promotion?       @relation(fields: [promotionId], references: [id], onDelete: SetNull)
+  loyaltyRule LoyaltyRule?     @relation(fields: [loyaltyRuleId], references: [id], onDelete: SetNull)
   product     Product          @relation(fields: [productId], references: [id])
   returnItems SaleReturnItem[]
 
@@ -533,9 +554,14 @@ model CustomerPayment {
   userId        String
   createdAt     DateTime      @default(now())
 
-  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  cashSession CashSession? @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
-  user        User         @relation(fields: [userId], references: [id])
+  customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  cashSession   CashSession? @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  user          User         @relation("CustomerPaymentUser", fields: [userId], references: [id])
+  // Estorno (pagamento lançado por engano): o pagamento continua no histórico, marcado como estornado.
+  cancelledAt   DateTime?
+  cancelledById String?
+  cancelReason  String?
+  cancelledBy   User?        @relation("CustomerPaymentCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
 
   @@index([customerId, createdAt])
 }
@@ -560,6 +586,7 @@ model PurchaseOrder {
   supplier  Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   createdBy User                @relation(fields: [createdById], references: [id])
   items     PurchaseOrderItem[]
+  bills     Bill[]
 
   @@index([status])
 }
@@ -577,4 +604,94 @@ model PurchaseOrderItem {
   product Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
+}
+
+// Kit: produto formado por outros (ex.: ração + petisco + brinquedo) com preço próprio.
+model KitItem {
+  id        String @id @default(cuid())
+  kitId     String
+  productId String
+  quantity  Float
+
+  kit     Product @relation("KitParent", fields: [kitId], references: [id], onDelete: Cascade)
+  product Product @relation("KitComponent", fields: [productId], references: [id])
+
+  @@unique([kitId, productId])
+}
+
+enum PromotionType {
+  PRICE // preço promocional
+  BUY_X_PAY_Y // leve X, pague Y
+}
+
+// Promoção com prazo: vale entre as datas e o preço volta ao normal sozinho.
+model Promotion {
+  id          String        @id @default(cuid())
+  productId   String
+  type        PromotionType
+  priceCents  Int? // PRICE
+  buyQuantity Int? // BUY_X_PAY_Y: leve
+  payQuantity Int? // BUY_X_PAY_Y: pague
+  startsAt    DateTime
+  endsAt      DateTime
+  active      Boolean       @default(true)
+  createdById String
+  createdAt   DateTime      @default(now())
+
+  product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdBy User       @relation(fields: [createdById], references: [id])
+  saleItems SaleItem[]
+
+  @@index([productId, startsAt, endsAt])
+}
+
+// Cartão fidelidade: a cada "requiredQuantity" comprados (de um produto ou de uma categoria), ganha um brinde.
+model LoyaltyRule {
+  id               String   @id @default(cuid())
+  name             String
+  productId        String?
+  category         String?
+  requiredQuantity Float
+  rewardProductId  String
+  rewardQuantity   Float    @default(1)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  product       Product?   @relation("LoyaltyQualify", fields: [productId], references: [id], onDelete: SetNull)
+  rewardProduct Product    @relation("LoyaltyReward", fields: [rewardProductId], references: [id])
+  saleItems     SaleItem[]
+}
+
+enum BillStatus {
+  OPEN
+  PAID
+  CANCELLED
+}
+
+// Conta a pagar (boleto de fornecedor, aluguel, luz...). Mensal: ao pagar, a do mês seguinte é criada sozinha.
+model Bill {
+  id              String         @id @default(cuid())
+  description     String
+  supplierId      String?
+  purchaseOrderId String?
+  amountCents     Int
+  dueDate         DateTime
+  monthly         Boolean        @default(false)
+  status          BillStatus     @default(OPEN)
+  notes           String?
+  paidAt          DateTime?
+  paidAmountCents Int?
+  paidMethod      PaymentMethod?
+  paidFromCash    Boolean        @default(false) // saiu da gaveta: vira sangria no caixa aberto
+  createdById     String
+  paidById        String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  createdBy     User           @relation("BillCreatedBy", fields: [createdById], references: [id])
+  paidBy        User?          @relation("BillPaidBy", fields: [paidById], references: [id], onDelete: SetNull)
+
+  @@index([status, dueDate])
 }

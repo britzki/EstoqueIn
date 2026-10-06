@@ -2,9 +2,11 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { centsToDecimal, sendCsv, toCsv } from '../../lib/csv.js';
 import { badRequest } from '../../lib/errors.js';
-import { requirePermission } from '../../middleware/auth.js';
+import { currentUser, requirePermission } from '../../middleware/auth.js';
+import { can } from '../../auth/permissions.js';
 import { getSalesReport } from '../sales/sales.report.js';
 import { getPurchaseSuggestion, getStaleProducts } from './purchasing.report.js';
+import { getMonthlyReport } from './monthly.report.js';
 import { getAbcCurve, getDashboard, getMovementSummary, getStockPosition } from './reports.service.js';
 
 export const dashboardRoutes = Router();
@@ -93,6 +95,18 @@ const PAYMENT_LABEL: Record<string, string> = {
   OTHER: 'Outro',
   ACCOUNT: 'Fiado',
 };
+
+/** Fechamento do mês (ou de outro período): vendas, despesas, fiado, caixa e estoque numa página. */
+reportsRoutes.get('/monthly', async (req, res) => {
+  const filters = parsePeriod(req.query);
+  const report = await getMonthlyReport(filters);
+  // Contas a pagar são só de administrador e gerente: os outros perfis veem o mês sem as despesas.
+  if (!can(currentUser(req).role, 'bills:manage')) {
+    res.json({ ...report, expenses: null, resultCents: null });
+    return;
+  }
+  res.json(report);
+});
 
 reportsRoutes.get('/sales', async (req, res) => {
   const filters = parsePeriod(req.query);

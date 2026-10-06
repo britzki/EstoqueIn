@@ -18,6 +18,7 @@ import {
 } from '../lib/format';
 import type { Customer, Paginated, RepurchaseReminder } from '../lib/types';
 import { AccountSection, DebtorsCard } from './customers/CustomerAccount';
+import { CustomerLoyalty } from './customers/CustomerLoyalty';
 import {
   Badge,
   Button,
@@ -317,6 +318,7 @@ function CustomerModal({
       ) : (
         <div className="space-y-5">
           <AccountSection customer={data} />
+          <CustomerLoyalty customerId={data.id} />
           {data.notes && <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-700">{data.notes}</p>}
           {data.reminders.length > 0 && (
             <div>

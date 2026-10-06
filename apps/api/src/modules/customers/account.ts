@@ -18,12 +18,15 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface AccountEntry {
   date: Date;
-  kind: 'OPENING' | 'SALE' | 'RETURN' | 'PAYMENT';
+  kind: 'OPENING' | 'SALE' | 'RETURN' | 'PAYMENT' | 'PAYMENT_CANCEL';
   description: string;
   /** Positivo aumenta a dívida; negativo abate. */
   amountCents: number;
   balanceCents: number;
   saleId?: string;
+  paymentId?: string;
+  /** Pagamento estornado e o próprio estorno: um anula o outro. */
+  voided?: boolean;
 }
 
 async function loadEntries(client: Tx, customerIds?: string[]) {
@@ -46,7 +49,16 @@ async function loadEntries(client: Tx, customerIds?: string[]) {
     }),
     client.customerPayment.findMany({
       where: customerIds ? { customerId: { in: customerIds } } : {},
-      select: { customerId: true, amountCents: true, method: true, createdAt: true, notes: true },
+      select: {
+        id: true,
+        customerId: true,
+        amountCents: true,
+        method: true,
+        createdAt: true,
+        notes: true,
+        cancelledAt: true,
+        cancelReason: true,
+      },
     }),
   ]);
 
@@ -87,7 +99,20 @@ async function loadEntries(client: Tx, customerIds?: string[]) {
       kind: 'PAYMENT',
       description: payment.notes ? `Pagamento (${payment.notes})` : 'Pagamento',
       amountCents: -payment.amountCents,
+      paymentId: payment.id,
+      voided: Boolean(payment.cancelledAt),
     });
+    // O estorno entra como lançamento próprio: o histórico mostra o pagamento e a correção.
+    if (payment.cancelledAt) {
+      push(payment.customerId, {
+        date: payment.cancelledAt,
+        kind: 'PAYMENT_CANCEL',
+        description: `Estorno do pagamento: ${payment.cancelReason ?? ''}`.trim(),
+        amountCents: payment.amountCents,
+        paymentId: payment.id,
+        voided: true,
+      });
+    }
   }
   return entries;
 }
@@ -102,9 +127,11 @@ function buildStatement(raw: Omit<AccountEntry, 'balanceCents'>[]) {
   });
 
   // Débito mais antigo ainda não coberto pelos abatimentos (primeiro a entrar, primeiro a ser pago).
-  let credits = -sorted.filter((e) => e.amountCents < 0).reduce((sum, e) => sum + e.amountCents, 0);
+  // Pagamento estornado e seu estorno se anulam e ficam de fora dessa conta.
+  const valid = sorted.filter((e) => !e.voided);
+  let credits = -valid.filter((e) => e.amountCents < 0).reduce((sum, e) => sum + e.amountCents, 0);
   let openSince: Date | null = null;
-  for (const entry of sorted.filter((e) => e.amountCents > 0)) {
+  for (const entry of valid.filter((e) => e.amountCents > 0)) {
     if (credits >= entry.amountCents) {
       credits -= entry.amountCents;
       continue;
@@ -149,7 +176,7 @@ export async function listDebtors() {
   const debtors = customers
     .map((customer) => {
       const { balanceCents, openSince, entries: list } = buildStatement(entries.get(customer.id) ?? []);
-      const lastPayment = list.filter((e) => e.kind === 'PAYMENT').at(-1)?.date ?? null;
+      const lastPayment = list.filter((e) => e.kind === 'PAYMENT' && !e.voided).at(-1)?.date ?? null;
       return {
         customer,
         balanceCents,
@@ -239,4 +266,16 @@ export async function receiveAccountPayment(
     });
     return { payment, customer, balanceCents: balance - input.amountCents };
   });
+}
+
+/** Estorna um pagamento de fiado lançado por engano. A dívida volta e o estorno fica no extrato. */
+export async function cancelAccountPayment(customerId: string, paymentId: string, reason: string, userId: string) {
+  const payment = await prisma.customerPayment.findUnique({ where: { id: paymentId }, include: { customer: true } });
+  if (!payment || payment.customerId !== customerId) throw notFound('Pagamento');
+  if (payment.cancelledAt) throw unprocessable('Este pagamento já foi estornado', 'ALREADY_CANCELLED');
+  const updated = await prisma.customerPayment.update({
+    where: { id: payment.id },
+    data: { cancelledAt: new Date(), cancelledById: userId, cancelReason: reason },
+  });
+  return { payment: updated, customer: payment.customer, balanceCents: await getCustomerBalance(customerId) };
 }

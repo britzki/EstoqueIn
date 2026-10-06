@@ -11,17 +11,28 @@ import {
   ShoppingCart,
   Star,
   Trash2,
+  Gift,
 } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { useCurrentCash, useDebounced, useSaleWarehouse, useStoreSettings } from '../../lib/hooks';
 import { useToast } from '../../lib/toast';
 import { centsToInput, formatMoney, formatNumber, parseMoneyInput, quantityStep } from '../../lib/format';
-import type { Paginated, PaymentMethod, Product, ResolvedCode, SaleDetail, SaleProduct } from '../../lib/types';
+import type {
+  LoyaltyProgress,
+  Paginated,
+  PaymentMethod,
+  Product,
+  Promotion,
+  ResolvedCode,
+  SaleDetail,
+  SaleProduct,
+} from '../../lib/types';
+import { priceLine, promotionLabel, useActivePromotions } from '../../lib/pricing';
 import { useAuth } from '../../lib/auth';
 import { useReceiptPrinter } from '../../components/Receipt';
 import { CustomerPicker, type CustomerChoice } from '../../components/CustomerPicker';
-import { Button, Card, EmptyState, ErrorMessage, Input, PageHeader, Select } from '../../components/ui';
+import { Badge, Button, Card, EmptyState, ErrorMessage, Input, PageHeader, Select } from '../../components/ui';
 import { OpenCashForm } from '../cash/CashPage';
 
 interface CartLine {
@@ -29,6 +40,8 @@ interface CartLine {
   product: SaleProduct;
   /** Texto do campo, para permitir digitação parcial ("0,", "1."). */
   quantity: string;
+  /** Brinde do cartão fidelidade (sai a R$ 0,00). */
+  giftRuleId?: string;
 }
 
 const METHODS: Array<{ value: PaymentMethod; label: string; icon: typeof Banknote }> = [
@@ -40,7 +53,11 @@ const METHODS: Array<{ value: PaymentMethod; label: string; icon: typeof Banknot
 ];
 
 const toNumber = (text: string) => Number(text.replace(',', '.'));
-const lineTotal = (line: CartLine) => Math.round((toNumber(line.quantity) || 0) * line.product.priceCents);
+/** Preço da linha com a promoção vigente (a conta final é do servidor). Brinde sai a zero. */
+const linePrice = (line: CartLine, promotions?: Map<string, Promotion>) =>
+  line.giftRuleId
+    ? { unitPriceCents: 0, totalCents: 0, savingsCents: 0 }
+    : priceLine(line.product.priceCents, toNumber(line.quantity) || 0, promotions?.get(line.product.id));
 let nextKey = 1;
 
 export function NewSalePage() {
@@ -93,12 +110,38 @@ export function NewSalePage() {
     setFocusLine(null);
   }, [focusLine, cart]);
 
+  const { data: promotions } = useActivePromotions();
+  const lineTotal = (line: CartLine) => linePrice(line, promotions).totalCents;
+
+  // Cartão fidelidade do cliente escolhido.
+  const { data: loyalty = [] } = useQuery({
+    queryKey: ['customers', 'loyalty', customer.customer?.id],
+    queryFn: () => api.get<LoyaltyProgress[]>(`/customers/${customer.customer!.id}/loyalty`),
+    enabled: Boolean(customer.customer),
+  });
+  const giftsInCart = (ruleId: string) =>
+    cart.filter((line) => line.giftRuleId === ruleId).reduce((sum, line) => sum + (toNumber(line.quantity) || 0), 0);
+  const addGift = (card: LoyaltyProgress) => {
+    setLastSale(null);
+    setCart((current) => [
+      ...current,
+      {
+        key: nextKey++,
+        product: { ...card.rule.rewardProduct, priceCents: card.rule.rewardProduct.priceCents },
+        quantity: String(card.rule.rewardQuantity),
+        giftRuleId: card.rule.id,
+      },
+    ]);
+  };
+
   const addToCart = (product: SaleProduct, quantity: number | null) => {
     setLastSale(null);
     const key = nextKey++;
     setCart((current) => {
       // Produto por unidade bipado de novo soma na mesma linha; pesados ficam em linhas separadas.
-      const existing = !product.fractional ? current.find((line) => line.product.id === product.id) : undefined;
+      const existing = !product.fractional
+        ? current.find((line) => line.product.id === product.id && !line.giftRuleId)
+        : undefined;
       if (existing && quantity !== null) {
         return current.map((line) =>
           line === existing ? { ...line, quantity: String(toNumber(line.quantity) + quantity) } : line,
@@ -146,7 +189,11 @@ export function NewSalePage() {
 
   const invalidLine = cart.find((line) => {
     const quantity = toNumber(line.quantity);
-    return !(quantity > 0) || (!line.product.fractional && !Number.isInteger(quantity)) || line.product.priceCents <= 0;
+    return (
+      !(quantity > 0) ||
+      (!line.product.fractional && !Number.isInteger(quantity)) ||
+      (!line.giftRuleId && line.product.priceCents <= 0)
+    );
   });
   const cashShort = !split && method === 'CASH' && received !== '' && receivedCents < total;
   const splitInvalid = split && (firstCents <= 0 || firstCents >= total);
@@ -170,10 +217,12 @@ export function NewSalePage() {
     customerAccount !== undefined &&
     customerAccount.balanceCents + accountCents > (customerAccount.creditLimitCents ?? 0);
 
+  // Venda só com brinde do cartão fidelidade: total zero, sem pagamento.
+  const onlyGifts = cart.length > 0 && cart.every((line) => line.giftRuleId);
   const canFinish =
     cart.length > 0 &&
     !invalidLine &&
-    total > 0 &&
+    (total > 0 || onlyGifts) &&
     !cashShort &&
     !splitInvalid &&
     !cashClosed &&
@@ -184,14 +233,21 @@ export function NewSalePage() {
     mutationFn: () =>
       api.post<SaleDetail>('/sales', {
         warehouseId: activeWarehouse,
-        items: cart.map((line) => ({ productId: line.product.id, quantity: toNumber(line.quantity) })),
+        items: cart.map((line) => ({
+          productId: line.product.id,
+          quantity: toNumber(line.quantity),
+          loyaltyRuleId: line.giftRuleId,
+        })),
         discountCents,
-        payments: split
-          ? [
-              { method, amountCents: firstCents },
-              { method: otherMethod, amountCents: total - firstCents },
-            ]
-          : [{ method, amountCents: method === 'CASH' && receivedCents > total ? receivedCents : total }],
+        payments:
+          total === 0
+            ? []
+            : split
+              ? [
+                  { method, amountCents: firstCents },
+                  { method: otherMethod, amountCents: total - firstCents },
+                ]
+              : [{ method, amountCents: method === 'CASH' && receivedCents > total ? receivedCents : total }],
         customerId: customer.customer?.id,
         customerName: customer.customer ? undefined : customer.name,
       }),
@@ -363,13 +419,40 @@ export function NewSalePage() {
               {cart.map((line) => {
                 const quantity = toNumber(line.quantity);
                 const overStock = line.product.stock !== undefined && quantity > line.product.stock;
+                const promotion = line.giftRuleId ? undefined : promotions?.get(line.product.id);
+                const price = linePrice(line, promotions);
                 return (
                   <li key={line.key} className="flex flex-wrap items-center gap-3 px-4 py-3">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium text-slate-900">{line.product.name}</p>
+                      <p className="truncate font-medium text-slate-900">
+                        {line.product.name}
+                        {line.giftRuleId && <Badge tone="green">Brinde fidelidade</Badge>}
+                        {line.product.isKit && <Badge tone="violet">Kit</Badge>}
+                      </p>
                       <p className="text-xs text-slate-500">
-                        {formatMoney(line.product.priceCents)} / {line.product.unit}
-                        {line.product.priceCents <= 0 && <span className="ml-2 text-red-600">sem preço de venda</span>}
+                        {line.giftRuleId ? (
+                          'Sai a R$ 0,00 pelo cartão fidelidade'
+                        ) : (
+                          <>
+                            {promotion?.type === 'PRICE' && price.savingsCents > 0 ? (
+                              <>
+                                <s>{formatMoney(line.product.priceCents)}</s> {formatMoney(price.unitPriceCents)}
+                              </>
+                            ) : (
+                              formatMoney(line.product.priceCents)
+                            )}{' '}
+                            / {line.product.unit}
+                          </>
+                        )}
+                        {promotion && (
+                          <span className="ml-2 font-medium text-emerald-700">
+                            Promoção: {promotionLabel(promotion)}
+                            {price.savingsCents > 0 && ` (economia de ${formatMoney(price.savingsCents)})`}
+                          </span>
+                        )}
+                        {!line.giftRuleId && line.product.priceCents <= 0 && (
+                          <span className="ml-2 text-red-600">sem preço de venda</span>
+                        )}
                         {overStock && (
                           <span
                             className={cn('ml-2', settings?.allowNegativeStock ? 'text-amber-700' : 'text-red-600')}
@@ -542,6 +625,33 @@ export function NewSalePage() {
               Cliente (opcional)
             </label>
             <CustomerPicker value={customer} onChange={setCustomer} />
+            {loyalty.map((card) => {
+              const remaining = card.available - giftsInCart(card.rule.id) / card.rule.rewardQuantity;
+              return (
+                <div
+                  key={card.rule.id}
+                  className={cn(
+                    'mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm',
+                    remaining > 0 ? 'bg-emerald-50 text-emerald-900' : 'bg-slate-50 text-slate-600',
+                  )}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Gift className="size-4 shrink-0" />
+                    {card.rule.name}:{' '}
+                    {remaining > 0
+                      ? `tem direito a ${formatNumber(card.rule.rewardQuantity)} ${card.rule.rewardProduct.name}`
+                      : giftsInCart(card.rule.id) > 0
+                        ? 'brinde incluído nesta venda'
+                        : `${formatNumber(card.progress)} de ${formatNumber(card.rule.requiredQuantity)} (falta ${formatNumber(card.missing)})`}
+                  </span>
+                  {remaining > 0 && (
+                    <Button size="sm" variant="secondary" onClick={() => addGift(card)}>
+                      Dar brinde
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
             {accountNeedsCustomer && (
               <p className="mt-2 text-sm text-amber-700">Para vender fiado, escolha ou cadastre o cliente.</p>
             )}

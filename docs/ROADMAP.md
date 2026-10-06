@@ -10,6 +10,8 @@ Decisões já tomadas e o que fica para depois. A ordem dentro de cada seção �
 
 ## Próximos passos
 
+Já feito na versão 1.7: estorno de pagamento de fiado, cartão fidelidade, promoções com prazo, kits, contas a pagar e fechamento do mês.
+
 Já feito na versão 1.6: fiado (caderneta digital com limite, pagamentos parciais e cobrança pelo WhatsApp), botões rápidos na tela de venda, pedidos de compra a partir da sugestão e aviso de backup na tela inicial.
 
 Já feito na versão 1.5: fechamento de caixa, venda com estoque zerado (opcional, com alerta), devolução parcial, cadastro de clientes com lembrete de recompra, sugestão de compra, relatório de produtos parados, cópia diária para fora do computador e arquivo de diagnóstico.

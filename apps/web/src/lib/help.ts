@@ -167,7 +167,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'O código de barras ainda não está no cadastro. Procure o produto pelo nome no mesmo campo e venda normalmente.',
       'Depois, quem tem acesso a Produtos pode abrir o cadastro do produto e preencher o código de barras, para da próxima vez ele ser reconhecido.',
     ],
-    keywords: ['nao encontrado', 'nao acha', 'codigo', 'bipar', 'leitor', 'nao reconhece', 'erro'],
+    keywords: [
+      'nao encontrado',
+      'nao acha',
+      'nao acha o produto',
+      'nao achou',
+      'codigo',
+      'bipar',
+      'leitor',
+      'nao reconhece',
+      'erro',
+    ],
     routes: ['/sales/new'],
   },
   {
@@ -619,6 +629,99 @@ export const HELP_ARTICLES: HelpArticle[] = [
     routes: ['/customers'],
   },
 
+  {
+    id: 'estornar-fiado',
+    category: 'Clientes',
+    question: 'Registrei um pagamento de fiado errado. Como desfaço?',
+    answer: [
+      'Em Clientes, abra o cliente e, no extrato do fiado, clique em "estornar" ao lado do pagamento. Escreva o motivo e confirme.',
+      'O valor volta para a dívida do cliente e, se tinha sido em dinheiro, deixa de contar no caixa. O pagamento continua no extrato, riscado, e o estorno fica registrado em Alterações.',
+      'Só gerente ou administrador estorna.',
+    ],
+    keywords: ['estornar', 'estorno', 'desfazer pagamento', 'pagamento errado', 'lancei errado', 'cancelar pagamento'],
+    routes: ['/customers'],
+  },
+  {
+    id: 'cartao-fidelidade',
+    category: 'Clientes',
+    question: 'Como funciona o cartão fidelidade?',
+    answer: [
+      'Em Configurações → Cartão fidelidade, crie a regra: por exemplo, a cada 10 da categoria Rações, ganha 1 petisco.',
+      'O sistema conta sozinho as compras de cada cliente (é preciso escolher o cliente na venda). Devoluções e vendas canceladas não contam.',
+      'No caixa, ao escolher o cliente, aparece quanto falta. Quando ele tiver direito, clique em Dar brinde: o produto entra na venda a R$ 0,00 e sai do estoque normalmente.',
+    ],
+    keywords: ['fidelidade', 'cartao fidelidade', 'pontos', 'brinde', 'ganha', 'premio', 'fidelizar', 'carimbo'],
+    routes: ['/settings', '/sales/new', '/customers'],
+  },
+  {
+    id: 'promocao',
+    category: 'Vendas',
+    question: 'Como coloco um produto em promoção?',
+    answer: [
+      '1. Em Promoções, clique em Nova promoção e escolha o produto.',
+      '2. Escolha o tipo: preço promocional (ex.: de R$ 100 por R$ 85) ou leve X, pague Y (ex.: leve 3, pague 2).',
+      '3. Defina quando começa e quando termina.',
+      'No período, o caixa cobra o preço da promoção sozinho e mostra a economia na tela e na notinha. Depois do prazo, o preço volta ao normal. Para terminar antes, use Encerrar.',
+    ],
+    keywords: ['promocao', 'oferta', 'liquidacao', 'leve 3', 'pague 2', 'black friday', 'preco promocional'],
+    routes: ['/promotions', '/sales/new'],
+  },
+  {
+    id: 'kit',
+    category: 'Produtos e cadastros',
+    question: 'Como monto um kit (vários produtos vendidos juntos)?',
+    answer: [
+      '1. Em Produtos → Novo produto, dê nome e preço ao kit e marque "É um kit".',
+      '2. Abra o kit e, em Produtos do kit, adicione os itens e as quantidades (ex.: 1 ração, 2 petiscos, 1 brinquedo). Salve.',
+      'O kit não tem estoque próprio: ao vender, sai do estoque cada produto que o compõe. A página mostra quantos kits dá para montar e o custo. Devolução e cancelamento devolvem os itens.',
+    ],
+    keywords: ['kit', 'combo', 'cesta', 'conjunto', 'pacote promocional', 'varios produtos'],
+    routes: ['/products'],
+  },
+  {
+    id: 'contas-pagar',
+    category: 'Relatórios',
+    question: 'Como controlo as contas a pagar (boletos, aluguel)?',
+    answer: [
+      'Em Contas a pagar, clique em Nova conta e informe descrição, valor e vencimento. Para aluguel e outras que se repetem, marque "Conta mensal": ao pagar, a do mês seguinte é lançada sozinha.',
+      'As contas vencidas e as que vencem nos próximos 7 dias aparecem na tela inicial.',
+      'Um pedido de compra também pode virar conta: abra o pedido e clique em Lançar conta a pagar.',
+      'Só administrador e gerente veem as contas a pagar. Para os outros perfis, a tela não aparece no menu.',
+    ],
+    keywords: ['contas', 'boleto', 'aluguel', 'luz', 'agua', 'vencimento', 'pagar', 'despesa', 'contas a pagar'],
+    routes: ['/bills', '/'],
+  },
+  {
+    id: 'pagar-conta',
+    category: 'Relatórios',
+    question: 'Paguei uma conta com o dinheiro do caixa. Como registro?',
+    answer: [
+      'Em Contas a pagar, clique em Pagar na conta, escolha Dinheiro e marque "Paguei com o dinheiro da gaveta do caixa".',
+      'O sistema registra a sangria no caixa aberto sozinho, para o fechamento bater.',
+    ],
+    keywords: ['paguei conta', 'dinheiro do caixa', 'gaveta', 'pagar conta', 'quitar boleto'],
+    routes: ['/bills', '/cash'],
+  },
+  {
+    id: 'fechamento-mes',
+    category: 'Relatórios',
+    question: 'Onde vejo o resumo do mês para mim ou para o contador?',
+    answer: [
+      'Relatórios → Fechamento do mês. Escolha o mês: aparecem faturamento, lucro, contas pagas, o resultado, o fiado vendido e recebido, as diferenças de caixa, o valor em estoque e os produtos mais vendidos.',
+      'O botão Imprimir / PDF gera uma página para guardar ou mandar ao contador.',
+    ],
+    keywords: [
+      'fechamento do mes',
+      'resumo do mes',
+      'contador',
+      'resultado',
+      'balanco do mes',
+      'quanto sobrou',
+      'lucro do mes',
+    ],
+    routes: ['/reports'],
+  },
+
   /* ---------- Relatórios ---------- */
   {
     id: 'relatorio-vendas',
@@ -692,7 +795,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     answer: [
       'Usuários → Novo usuário (só o administrador). Escolha o perfil:',
       'Operador: vende, abre e fecha o caixa, dá entrada e saída e conta inventário.',
-      'Gerente: tudo do operador, mais cadastros, preços, cancelamentos, devoluções, relatórios e configurações.',
+      'Gerente: tudo do operador, mais cadastros, preços, cancelamentos, devoluções, relatórios, configurações e contas a pagar.',
       'Administrador: tudo, inclusive usuários. Somente leitura: só consulta.',
       'A senha criada é temporária: o funcionário escolhe a dele no primeiro acesso.',
     ],
@@ -868,7 +971,8 @@ export function searchHelp(query: string, limit = 5): HelpMatch[] {
       const w = weight.get(word)!;
       if (keywords.some((keyword) => sameWord(word, keyword))) score += 3 * w;
       if (question.some((token) => sameWord(word, token))) score += 3 * w;
-      else if (answer.some((token) => sameWord(word, token))) score += w;
+      // Palavra que só aparece no texto da resposta vale pouco, mesmo se for rara.
+      else if (answer.some((token) => sameWord(word, token))) score += Math.min(w, 1);
     }
     // Expressões inteiras ("fechar caixa", "nota fiscal") valem mais que palavras soltas.
     for (const phrase of phrases) if (text.includes(phrase)) score += 4;

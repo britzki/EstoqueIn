@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleCheck, MessageCircle, Printer, Trash2, XCircle } from 'lucide-react';
+import { CircleCheck, MessageCircle, Printer, Trash2, WalletCards, XCircle } from 'lucide-react';
+import { BillFormModal } from '../BillsPage';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useStoreSettings } from '../../lib/hooks';
@@ -109,6 +110,7 @@ export function OrderModal({ id, onClose }: { id: string; onClose: () => void })
   const queryClient = useQueryClient();
   const { data: settings } = useStoreSettings();
   const [printing, setPrinting] = useState(false);
+  const [billing, setBilling] = useState(false);
   const { data: order, error } = useQuery({
     queryKey: ['purchase-orders', 'detail', id],
     queryFn: () => api.get<PurchaseOrder>(`/purchase-orders/${id}`),
@@ -163,6 +165,11 @@ export function OrderModal({ id, onClose }: { id: string; onClose: () => void })
                 </Button>
               </>
             )}
+            {can('bills:manage') && order.status !== 'CANCELLED' && (
+              <Button variant="secondary" icon={<WalletCards className="size-4" />} onClick={() => setBilling(true)}>
+                Lançar conta a pagar
+              </Button>
+            )}
             <Button variant="secondary" icon={<Printer className="size-4" />} onClick={print}>
               Imprimir / PDF
             </Button>
@@ -183,6 +190,18 @@ export function OrderModal({ id, onClose }: { id: string; onClose: () => void })
       {printing &&
         order &&
         createPortal(<OrderDocument order={order} settings={settings} />, document.getElementById('print-root')!)}
+      {billing && order && (
+        <BillFormModal
+          bill={null}
+          initial={{
+            description: `Pedido nº ${order.number}${order.supplier ? ` – ${order.supplier.name}` : ''}`,
+            supplierId: order.supplier?.id,
+            purchaseOrderId: order.id,
+            amountCents: order.totalCents,
+          }}
+          onClose={() => setBilling(false)}
+        />
+      )}
       {error ? (
         <ErrorMessage error={error} />
       ) : !order ? (

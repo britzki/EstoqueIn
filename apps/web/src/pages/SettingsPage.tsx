@@ -8,6 +8,7 @@ import { useToast } from '../lib/toast';
 import type { SaleDetail, StoreSettings } from '../lib/types';
 import { Receipt } from '../components/Receipt';
 import { ExternalBackupCard } from './settings/ExternalBackupCard';
+import { LoyaltyCard } from './settings/LoyaltyCard';
 import {
   Button,
   Card,
@@ -239,6 +240,8 @@ export function SettingsPage() {
               />
             </div>
           </Card>
+
+          <LoyaltyCard />
 
           {desktop ? <ExternalBackupCard /> : null}
 

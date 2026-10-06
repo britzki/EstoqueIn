@@ -28,7 +28,7 @@ Em **Gestão → Usuários**:
 
 - [ ] Criar um usuário para cada funcionário, com o perfil adequado:
   - **Operador:** vende, dá entrada e saída, conta inventário.
-  - **Gerente:** também cadastra produtos, altera preços, cancela vendas e vê relatórios.
+  - **Gerente:** também cadastra produtos, altera preços, cancela vendas, vê relatórios e cuida das contas a pagar.
   - **Administrador:** tudo, inclusive usuários.
 - [ ] A senha criada pelo administrador é temporária: o funcionário define a própria no primeiro acesso.
 
@@ -46,6 +46,9 @@ Depois:
 
 - [ ] Para ração a granel: abrir o cadastro do saco fechado e usar **Criar versão a granel**.
 - [ ] Marcar como **Botão rápido na tela de venda** os produtos que mais saem (ração a granel, por exemplo).
+- [ ] Se a loja quiser, criar o **cartão fidelidade** em Configurações (ex.: a cada 10 sacos de ração, 1 petisco de brinde).
+- [ ] Lançar em **Contas a pagar** as contas fixas do mês (aluguel, luz, internet) marcando "Conta mensal".
+- [ ] Kits vendidos na loja: cadastrar como produto, marcar **É um kit** e escolher os itens na página do produto.
 - [ ] **Fiado do caderno:** cadastrar em Clientes quem está devendo e preencher **Fiado anterior, do caderno** com o valor que cada um deve hoje. Definir o limite de fiado de quem precisar.
 - [ ] Preencher o **telefone (WhatsApp) dos fornecedores**, para enviar os pedidos de compra direto.
 - [ ] Fornecedores e produtos novos entram sozinhos pelas próximas notas, em **Entrada por NF-e**.
@@ -68,6 +71,9 @@ O programa faz backup automático todo dia e antes de cada atualização, mas **
 - [ ] **Clientes → Hora de recomprar:** quem costuma levar ração e está perto de acabar, com o botão para avisar pelo WhatsApp.
 - [ ] **Fiado:** vender no fiado (escolher o cliente e a forma Fiado), receber pagamento em Clientes e usar o botão Cobrar.
 - [ ] **Pedidos de compra:** gerar o pedido pela sugestão de compra e marcar como recebido quando chegar.
+- [ ] **Promoções:** criar com data de início e fim; o caixa cobra sozinho.
+- [ ] **Contas a pagar:** pagar pela tela (com dinheiro da gaveta, se for o caso) e acompanhar o aviso na tela inicial.
+- [ ] **Fechamento do mês** (Relatórios): imprimir no começo de cada mês para o dono ou o contador.
 - [ ] **Ajuda:** mostrar a tecla F1 e o botão Falar com o suporte.
 - [ ] **Relatórios → Sugestão de compra** antes de fazer o pedido ao fornecedor, e **Produtos parados** de tempos em tempos.
 - [ ] **Entrada por NF-e:** enviar o XML que o fornecedor manda por e-mail.

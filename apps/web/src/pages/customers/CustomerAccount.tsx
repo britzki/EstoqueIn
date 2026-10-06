@@ -161,6 +161,7 @@ export function AccountSection({ customer }: { customer: Customer }) {
   const queryClient = useQueryClient();
   const { warehouseId } = useSaleWarehouse();
   const [receiving, setReceiving] = useState(false);
+  const [reversing, setReversing] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<Exclude<PaymentMethod, 'ACCOUNT'>>('CASH');
   const [notes, setNotes] = useState('');
@@ -297,8 +298,32 @@ export function AccountSection({ customer }: { customer: Customer }) {
           {data.entries.map((entry, index) => (
             <li key={index} className="flex items-center justify-between gap-3 px-4 py-2">
               <span>
-                <span className="text-slate-900">{entry.description}</span>
-                <span className="block text-xs text-slate-500">{formatDate(entry.date)}</span>
+                <span className={cn('text-slate-900', entry.kind === 'PAYMENT' && entry.voided && 'line-through')}>
+                  {entry.description}
+                </span>
+                <span className="block text-xs text-slate-500">
+                  {formatDate(entry.date)}
+                  {entry.kind === 'PAYMENT' && entry.voided && ' · estornado'}
+                  {entry.kind === 'PAYMENT' && !entry.voided && entry.paymentId && can('sales:cancel') && (
+                    <>
+                      {' · '}
+                      <button
+                        type="button"
+                        className="text-red-700 hover:underline"
+                        onClick={() => setReversing(entry.paymentId!)}
+                      >
+                        estornar
+                      </button>
+                    </>
+                  )}
+                </span>
+                {reversing === entry.paymentId && (
+                  <ReverseForm
+                    customerId={customer.id}
+                    paymentId={entry.paymentId!}
+                    onDone={() => setReversing(null)}
+                  />
+                )}
               </span>
               <span className="text-right tabular-nums">
                 <span className={entry.amountCents > 0 ? 'text-slate-900' : 'text-emerald-700'}>
@@ -311,5 +336,45 @@ export function AccountSection({ customer }: { customer: Customer }) {
         </ul>
       )}
     </div>
+  );
+}
+
+/** Estorno de pagamento lançado por engano: pede o motivo e devolve o valor à dívida. */
+function ReverseForm({ customerId, paymentId, onDone }: { customerId: string; paymentId: string; onDone: () => void }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [reason, setReason] = useState('');
+  const reverse = useMutation({
+    mutationFn: () => api.post(`/customers/${customerId}/payments/${paymentId}/cancel`, { reason }),
+    onSuccess: () => {
+      toast.success('Pagamento estornado', 'O valor voltou para o fiado do cliente.');
+      for (const key of ['customers', 'cash']) queryClient.invalidateQueries({ queryKey: [key] });
+      onDone();
+    },
+  });
+  return (
+    <span className="mt-2 flex flex-wrap items-center gap-2">
+      <Input
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Motivo do estorno"
+        className="h-8 w-56"
+        autoFocus
+        aria-label="Motivo do estorno"
+      />
+      <Button
+        size="sm"
+        variant="danger"
+        loading={reverse.isPending}
+        disabled={reason.trim().length < 3}
+        onClick={() => reverse.mutate()}
+      >
+        Estornar
+      </Button>
+      <Button size="sm" variant="ghost" onClick={onDone}>
+        Voltar
+      </Button>
+      {reverse.error && <span className="w-full text-xs text-red-600">{(reverse.error as Error).message}</span>}
+    </span>
   );
 }

@@ -24,6 +24,9 @@ import { auditRoutes } from './modules/audit/audit.routes.js';
 import { cashRoutes } from './modules/cash/cash.routes.js';
 import { customersRoutes } from './modules/customers/customers.routes.js';
 import { purchaseOrdersRoutes } from './modules/purchasing/purchase-orders.routes.js';
+import { promotionsRoutes } from './modules/promotions/promotions.routes.js';
+import { loyaltyRoutes } from './modules/loyalty/loyalty.routes.js';
+import { billsRoutes } from './modules/bills/bills.routes.js';
 
 interface AppOptions {
   /** Pasta do front-end compilado. Quando informada, a API também serve a interface. */
@@ -73,6 +76,10 @@ export function createApp({ webDist }: AppOptions = {}) {
   api.use('/cash', cashRoutes);
   api.use('/customers', customersRoutes);
   api.use('/purchase-orders', purchaseOrdersRoutes);
+  api.use('/promotions', promotionsRoutes);
+  api.use('/loyalty-rules', loyaltyRoutes);
+  // Contas a pagar: só administrador e gerente (nem a tela nem os dados para os outros perfis).
+  api.use('/bills', requirePermission('bills:manage'), billsRoutes);
   api.use('/settings', settingsRoutes);
   api.use('/audit', requirePermission('audit:read'), auditRoutes);
   app.use('/api', api);

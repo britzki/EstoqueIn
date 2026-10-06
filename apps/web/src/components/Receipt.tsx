@@ -39,6 +39,12 @@ export function Receipt({ sale, settings }: { sale: SaleDetail; settings: StoreS
             </span>
             <span>{money(item.totalCents)}</span>
           </div>
+          {item.promoDiscountCents ? (
+            <div className={row}>
+              <span>Promoção (economia)</span>
+              <span>-{money(item.promoDiscountCents)}</span>
+            </div>
+          ) : null}
         </div>
       ))}
       {rule}

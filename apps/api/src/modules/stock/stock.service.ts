@@ -39,8 +39,17 @@ export async function applyMovement(tx: Tx, input: MovementInput) {
   const delta = roundQty(input.delta);
   if (!Number.isFinite(delta) || delta === 0) throw badRequest('Quantidade deve ser diferente de zero');
 
-  const product = await tx.product.findUnique({ where: { id: productId }, select: { name: true, fractional: true } });
+  const product = await tx.product.findUnique({
+    where: { id: productId },
+    select: { name: true, fractional: true, isKit: true },
+  });
   if (!product) throw notFound('Produto');
+  if (product.isKit) {
+    throw unprocessable(
+      `${product.name} é um kit e não tem estoque próprio: movimente os produtos que o compõem`,
+      'KIT_HAS_NO_STOCK',
+    );
+  }
   if (!product.fractional && !isWholeNumber(delta)) {
     throw unprocessable(
       `${product.name} é controlado em unidades inteiras e não aceita quantidade fracionada (${delta})`,

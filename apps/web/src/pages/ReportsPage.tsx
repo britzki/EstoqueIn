@@ -1,8 +1,18 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeftRight, Boxes, Download, PackagePlus, PackageX, ShoppingCart, TrendingUp } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  Boxes,
+  CalendarCheck,
+  Download,
+  PackagePlus,
+  PackageX,
+  ShoppingCart,
+  TrendingUp,
+} from 'lucide-react';
 import { SalesReport } from './SalesReport';
+import { MonthlyReport } from './MonthlyReport';
 import { PurchaseSuggestionReport, StaleProductsReport } from './PurchasingReports';
 import { api, type Query } from '../lib/api';
 import { useCategories, useWarehouses } from '../lib/hooks';
@@ -27,7 +37,7 @@ import {
   type Tone,
 } from '../components/ui';
 
-type Report = 'sales' | 'position' | 'purchase' | 'stale' | 'movements' | 'abc';
+type Report = 'monthly' | 'sales' | 'position' | 'purchase' | 'stale' | 'movements' | 'abc';
 
 export function ReportsPage() {
   // ?tab=purchase abre direto a sugestão de compra (link da tela de pedidos).
@@ -45,6 +55,7 @@ export function ReportsPage() {
           value={report}
           onChange={setReport}
           options={[
+            { value: 'monthly', label: 'Fechamento do mês', icon: <CalendarCheck /> },
             { value: 'sales', label: 'Vendas', icon: <ShoppingCart /> },
             { value: 'position', label: 'Posição de estoque', icon: <Boxes /> },
             { value: 'purchase', label: 'Sugestão de compra', icon: <PackagePlus /> },
@@ -54,6 +65,7 @@ export function ReportsPage() {
           ]}
         />
       </div>
+      {report === 'monthly' && <MonthlyReport />}
       {report === 'sales' && <SalesReport />}
       {report === 'position' && <StockPositionReport />}
       {report === 'purchase' && <PurchaseSuggestionReport />}

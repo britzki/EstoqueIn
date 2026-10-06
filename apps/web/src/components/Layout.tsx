@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeftRight,
+  BadgePercent,
   Bell,
   ChartColumn,
   ClipboardList,
@@ -23,6 +24,7 @@ import {
   ShoppingCart,
   Users,
   Wallet,
+  WalletCards,
   Warehouse,
   X,
 } from 'lucide-react';
@@ -92,6 +94,7 @@ export function Layout() {
         { to: '/sales', label: 'Vendas', icon: <Receipt />, end: true },
         { to: '/cash', label: 'Caixa', icon: <Wallet /> },
         { to: '/customers', label: 'Clientes', icon: <Contact /> },
+        { to: '/promotions', label: 'Promoções', icon: <BadgePercent /> },
       ],
     },
     {
@@ -116,6 +119,7 @@ export function Layout() {
       title: 'Gestão',
       items: [
         { to: '/reports', label: 'Relatórios', icon: <ChartColumn />, permission: 'reports:read' },
+        { to: '/bills', label: 'Contas a pagar', icon: <WalletCards />, permission: 'bills:manage' },
         { to: '/audit', label: 'Alterações', icon: <ScrollText />, permission: 'audit:read' },
         { to: '/settings', label: 'Configurações', icon: <Settings />, permission: 'settings:manage' },
         { to: '/users', label: 'Usuários', icon: <Users />, permission: 'users:manage' },

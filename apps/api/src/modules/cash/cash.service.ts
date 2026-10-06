@@ -37,7 +37,12 @@ export async function getCashSummary(sessionId: string) {
       movements: { include: { user: { select: { name: true } } }, orderBy: { createdAt: 'asc' } },
       sales: { include: { payments: true } },
       returns: true,
-      customerPayments: { include: { customer: { select: { id: true, name: true } } }, orderBy: { createdAt: 'asc' } },
+      // Pagamento de fiado estornado não entra na gaveta.
+      customerPayments: {
+        where: { cancelledAt: null },
+        include: { customer: { select: { id: true, name: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
     },
   });
   if (!session) throw notFound('Caixa');

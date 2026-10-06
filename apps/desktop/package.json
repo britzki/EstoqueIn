@@ -1,7 +1,7 @@
 {
   "name": "@estoquein/desktop",
   "productName": "EstoqueIn",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "description": "EstoqueIn — gestão de estoque para pequenas empresas",
   "author": "EstoqueIn",

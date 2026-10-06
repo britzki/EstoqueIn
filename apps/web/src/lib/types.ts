@@ -15,6 +15,7 @@ export type Permission =
   | 'sales:cancel'
   | 'settings:manage'
   | 'audit:read'
+  | 'bills:manage'
   | 'users:manage';
 
 export interface SessionUser {
@@ -87,6 +88,7 @@ export interface Product {
   /** Código do produto na balança etiquetadora. */
   scaleCode: string | null;
   quickSale?: boolean;
+  isKit?: boolean;
   supplierId: string | null;
   supplier?: Ref | null;
   totalQuantity?: number;
@@ -117,6 +119,16 @@ export interface ProductDetail extends Product {
     description: string | null;
     supplier: Ref;
   }>;
+  kitItems: KitItem[];
+  /** Só para kits: quantos dá para montar e o custo pelos componentes. */
+  kit: { available: number; costCents: number } | null;
+}
+
+export interface KitItem {
+  id: string;
+  productId: string;
+  quantity: number;
+  product: Pick<Product, 'id' | 'sku' | 'name' | 'unit' | 'costCents' | 'priceCents' | 'fractional'>;
 }
 
 export type MovementType =
@@ -234,6 +246,10 @@ export interface SaleItem {
   quantity: number;
   unitPriceCents: number;
   totalCents: number;
+  /** Economia da promoção neste item. */
+  promoDiscountCents?: number;
+  /** Brinde do cartão fidelidade. */
+  loyaltyRuleId?: string | null;
   /** Quanto ainda pode ser devolvido (só no detalhe da venda). */
   returnable?: number;
 }
@@ -364,11 +380,14 @@ export interface Customer {
 
 export interface AccountEntry {
   date: string;
-  kind: 'OPENING' | 'SALE' | 'RETURN' | 'PAYMENT';
+  kind: 'OPENING' | 'SALE' | 'RETURN' | 'PAYMENT' | 'PAYMENT_CANCEL';
   description: string;
   amountCents: number;
   balanceCents: number;
   saleId?: string;
+  paymentId?: string;
+  /** Pagamento estornado (e o próprio estorno). */
+  voided?: boolean;
 }
 
 export interface AccountStatement {
@@ -424,7 +443,9 @@ export interface SaleProduct {
   unit: string;
   fractional: boolean;
   priceCents: number;
+  /** Para kit: quantos dá para montar. */
   stock?: number;
+  isKit?: boolean;
 }
 
 export interface ResolvedCode {
@@ -432,4 +453,69 @@ export interface ResolvedCode {
   /** null = perguntar a quantidade (produto por peso sem etiqueta). */
   quantity: number | null;
   source: 'barcode' | 'scale' | 'sku';
+}
+
+export interface Promotion {
+  id: string;
+  productId: string;
+  type: 'PRICE' | 'BUY_X_PAY_Y';
+  priceCents: number | null;
+  buyQuantity: number | null;
+  payQuantity: number | null;
+  startsAt: string;
+  endsAt: string;
+  active: boolean;
+  product?: Pick<Product, 'id' | 'sku' | 'name' | 'unit' | 'priceCents'>;
+}
+
+export interface LoyaltyRule {
+  id: string;
+  name: string;
+  productId: string | null;
+  category: string | null;
+  requiredQuantity: number;
+  rewardProductId: string;
+  rewardQuantity: number;
+  active: boolean;
+  product: { id: string; name: string; unit: string } | null;
+  rewardProduct: { id: string; name: string; unit: string };
+}
+
+export interface LoyaltyProgress {
+  rule: {
+    id: string;
+    name: string;
+    requiredQuantity: number;
+    rewardQuantity: number;
+    unit: string;
+    rewardProduct: { id: string; sku: string; name: string; unit: string; fractional: boolean; priceCents: number };
+  };
+  purchased: number;
+  missing: number;
+  progress: number;
+  available: number;
+}
+
+export interface Bill {
+  id: string;
+  description: string;
+  amountCents: number;
+  dueDate: string;
+  monthly: boolean;
+  status: 'OPEN' | 'PAID' | 'CANCELLED';
+  notes: string | null;
+  paidAt: string | null;
+  paidAmountCents: number | null;
+  paidMethod: PaymentMethod | null;
+  paidFromCash: boolean;
+  supplier: Ref | null;
+  purchaseOrder: { id: string; number: number } | null;
+  createdBy: Ref;
+  paidBy: Ref | null;
+}
+
+export interface BillsSummary {
+  overdue: { count: number; totalCents: number };
+  upcoming: { count: number; totalCents: number };
+  bills: Array<Bill & { supplier: { name: string } | null }>;
 }

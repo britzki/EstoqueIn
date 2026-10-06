@@ -8,17 +8,28 @@ import { applyMovement } from '../stock/stock.service.js';
 import { publishAlertChanges, type AlertChange } from '../alerts/alerts.service.js';
 import { getStoreSettings } from '../settings/settings.routes.js';
 import { assertAccountSale, getCustomerBalance } from '../customers/account.js';
+import { activePromotions, priceLine } from '../promotions/pricing.js';
+import { getCustomerLoyalty } from '../loyalty/loyalty.service.js';
+import { kitAvailability } from '../products/kits.js';
 
 /** ACCOUNT = fiado: o valor fica na conta do cliente e é pago depois. */
 export const paymentMethods = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER', 'ACCOUNT'] as const;
 
 export const saleSchema = z.object({
   warehouseId: id,
-  items: z.array(z.object({ productId: id, quantity: positiveQty })).min(1, 'Adicione pelo menos um item'),
+  items: z
+    .array(
+      z.object({
+        productId: id,
+        quantity: positiveQty,
+        /** Brinde do cartão fidelidade: sai a R$ 0,00 se o cliente tiver direito. */
+        loyaltyRuleId: optionalId,
+      }),
+    )
+    .min(1, 'Adicione pelo menos um item'),
   discountCents: nonNegativeInt.default(0),
-  payments: z
-    .array(z.object({ method: z.enum(paymentMethods), amountCents: positiveInt }))
-    .min(1, 'Informe a forma de pagamento'),
+  /** Pode vir vazio só quando o total é zero (venda só com brinde do cartão fidelidade). */
+  payments: z.array(z.object({ method: z.enum(paymentMethods), amountCents: positiveInt })).default([]),
   customerName: optionalText(120),
   customerId: optionalId,
   notes: optionalText(255),
@@ -39,10 +50,49 @@ const saleInclude = {
   },
 } as const;
 
+/** Parte do estoque que um item da venda movimenta: o próprio produto ou, no kit, cada componente. */
+interface StockPart {
+  productId: string;
+  name: string;
+  unit: string;
+  /** Quantidade por unidade vendida do item. */
+  perUnit: number;
+  unitCostCents: number;
+}
+
+/** Componentes do kit guardados no item da venda (a composição pode mudar depois). */
+function partsOfItem(item: {
+  productId: string;
+  description: string;
+  unit: string;
+  unitCostCents: number;
+  kitComponents: string | null;
+}): StockPart[] {
+  if (!item.kitComponents) {
+    return [
+      {
+        productId: item.productId,
+        name: item.description,
+        unit: item.unit,
+        perUnit: 1,
+        unitCostCents: item.unitCostCents,
+      },
+    ];
+  }
+  return (JSON.parse(item.kitComponents) as Array<Omit<StockPart, 'perUnit'> & { quantity: number }>).map((part) => ({
+    productId: part.productId,
+    name: part.name,
+    unit: part.unit,
+    perUnit: part.quantity,
+    unitCostCents: part.unitCostCents,
+  }));
+}
+
 /**
  * Registra uma venda: grava a venda, os itens e os pagamentos e baixa o estoque de cada item,
  * tudo numa única transação. Se faltar estoque de qualquer item, nada é gravado.
- * O preço vem sempre do cadastro do produto, nunca do navegador.
+ * O preço vem sempre do cadastro do produto (com a promoção vigente), nunca do navegador.
+ * Kit baixa o estoque dos componentes; brinde do cartão fidelidade sai a R$ 0,00.
  */
 export async function createSale(input: SaleInput, userId: string) {
   const result = await prisma.$transaction(
@@ -58,19 +108,94 @@ export async function createSale(input: SaleInput, userId: string) {
       const customer = input.customerId ? await tx.customer.findUnique({ where: { id: input.customerId } }) : null;
       if (input.customerId && !customer) throw notFound('Cliente');
 
-      const products = await tx.product.findMany({ where: { id: { in: input.items.map((item) => item.productId) } } });
+      const productIds = input.items.map((item) => item.productId);
+      const [products, promotions] = await Promise.all([
+        tx.product.findMany({
+          where: { id: { in: productIds } },
+          include: { kitItems: { include: { product: true } } },
+        }),
+        activePromotions(productIds, tx),
+      ]);
+
+      // Brindes do cartão fidelidade: confere se o cliente tem direito.
+      const giftItems = input.items.filter((item) => item.loyaltyRuleId);
+      if (giftItems.length > 0) {
+        if (!customer)
+          throw unprocessable('Para dar o brinde do cartão fidelidade, escolha o cliente', 'LOYALTY_NEEDS_CUSTOMER');
+        const loyalty = await getCustomerLoyalty(customer.id, tx);
+        for (const ruleId of new Set(giftItems.map((item) => item.loyaltyRuleId!))) {
+          const card = loyalty.find((entry) => entry.rule.id === ruleId);
+          const requested = giftItems
+            .filter((item) => item.loyaltyRuleId === ruleId)
+            .reduce((sum, item) => sum + item.quantity, 0);
+          if (!card) throw notFound('Cartão fidelidade');
+          if (
+            giftItems.some((item) => item.loyaltyRuleId === ruleId && item.productId !== card.rule.rewardProduct.id)
+          ) {
+            throw unprocessable(
+              `O brinde de "${card.rule.name}" é ${card.rule.rewardProduct.name}`,
+              'LOYALTY_INVALID_REWARD',
+            );
+          }
+          if (requested > card.available * card.rule.rewardQuantity + 1e-9) {
+            throw unprocessable(
+              `${customer.name} ainda não tem direito ao brinde de "${card.rule.name}" (falta comprar ${card.missing})`,
+              'LOYALTY_NOT_AVAILABLE',
+            );
+          }
+        }
+      }
+
       const lines = input.items.map((item) => {
         const product = products.find((p) => p.id === item.productId);
         if (!product) throw notFound('Produto');
         if (!product.active) throw unprocessable(`${product.name} está inativo e não pode ser vendido`);
-        if (product.priceCents <= 0) throw unprocessable(`${product.name} está sem preço de venda`, 'MISSING_PRICE');
-        return { product, quantity: item.quantity, totalCents: Math.round(item.quantity * product.priceCents) };
+        const gift = Boolean(item.loyaltyRuleId);
+        if (!gift && product.priceCents <= 0) {
+          throw unprocessable(`${product.name} está sem preço de venda`, 'MISSING_PRICE');
+        }
+
+        let parts: StockPart[];
+        if (product.isKit) {
+          if (product.kitItems.length === 0) throw unprocessable(`O kit ${product.name} não tem produtos cadastrados`);
+          if (!Number.isInteger(item.quantity)) throw unprocessable(`Kit é vendido por unidade: ${product.name}`);
+          parts = product.kitItems.map((kitItem) => ({
+            productId: kitItem.productId,
+            name: kitItem.product.name,
+            unit: kitItem.product.unit,
+            perUnit: kitItem.quantity,
+            unitCostCents: kitItem.product.costCents,
+          }));
+        } else {
+          parts = [
+            {
+              productId: product.id,
+              name: product.name,
+              unit: product.unit,
+              perUnit: 1,
+              unitCostCents: product.costCents,
+            },
+          ];
+        }
+        const unitCostCents = Math.round(parts.reduce((sum, part) => sum + part.perUnit * part.unitCostCents, 0));
+        const price = gift
+          ? { unitPriceCents: 0, totalCents: 0, promoDiscountCents: 0, promotionId: null }
+          : priceLine(product.priceCents, item.quantity, promotions.get(product.id) ?? null);
+        return {
+          product,
+          quantity: item.quantity,
+          loyaltyRuleId: item.loyaltyRuleId ?? null,
+          parts,
+          unitCostCents,
+          ...price,
+        };
       });
 
       const subtotalCents = lines.reduce((sum, line) => sum + line.totalCents, 0);
       if (input.discountCents > subtotalCents) throw unprocessable('O desconto não pode ser maior que o total');
       const totalCents = subtotalCents - input.discountCents;
 
+      if (totalCents > 0 && input.payments.length === 0) throw badRequest('Informe a forma de pagamento');
       const paidCents = input.payments.reduce((sum, payment) => sum + payment.amountCents, 0);
       if (paidCents < totalCents) {
         throw unprocessable('O valor pago é menor que o total da venda', 'INSUFFICIENT_PAYMENT', {
@@ -104,16 +229,30 @@ export async function createSale(input: SaleInput, userId: string) {
           totalCents,
           paidCents,
           changeCents,
-          costCents: lines.reduce((sum, line) => sum + Math.round(line.quantity * line.product.costCents), 0),
+          costCents: lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitCostCents), 0),
           items: {
             create: lines.map((line) => ({
               productId: line.product.id,
-              description: line.product.name,
+              description: line.loyaltyRuleId ? `${line.product.name} (brinde fidelidade)` : line.product.name,
               unit: line.product.unit,
               quantity: line.quantity,
-              unitPriceCents: line.product.priceCents,
+              unitPriceCents: line.unitPriceCents,
               totalCents: line.totalCents,
-              unitCostCents: line.product.costCents,
+              unitCostCents: line.unitCostCents,
+              promoDiscountCents: line.promoDiscountCents,
+              promotionId: line.promotionId,
+              loyaltyRuleId: line.loyaltyRuleId,
+              kitComponents: line.product.isKit
+                ? JSON.stringify(
+                    line.parts.map((part) => ({
+                      productId: part.productId,
+                      name: part.name,
+                      unit: part.unit,
+                      quantity: part.perUnit,
+                      unitCostCents: part.unitCostCents,
+                    })),
+                  )
+                : null,
             })),
           },
           payments: { create: input.payments },
@@ -123,31 +262,34 @@ export async function createSale(input: SaleInput, userId: string) {
 
       const alerts: AlertChange[] = [];
       for (const line of lines) {
-        try {
-          const { alert } = await applyMovement(tx, {
-            type: 'EXIT',
-            productId: line.product.id,
-            warehouseId: warehouse.id,
-            delta: -line.quantity,
-            unitCostCents: line.product.costCents,
-            documentRef: `Venda ${number}`,
-            reason: 'Venda',
-            saleId: sale.id,
-            userId,
-            allowNegative: settings.allowNegativeStock,
-          });
-          alerts.push(alert);
-        } catch (error) {
-          // Deixa claro qual produto faltou, já que a venda tem vários.
-          if (error instanceof AppError && error.code === 'INSUFFICIENT_STOCK') {
-            const details = error.details as { available: number };
-            throw unprocessable(
-              `Estoque insuficiente de ${line.product.name}: disponível ${details.available} ${line.product.unit}`,
-              'INSUFFICIENT_STOCK',
-              { ...details, productId: line.product.id },
-            );
+        for (const part of line.parts) {
+          try {
+            const { alert } = await applyMovement(tx, {
+              type: 'EXIT',
+              productId: part.productId,
+              warehouseId: warehouse.id,
+              delta: -roundQty(line.quantity * part.perUnit),
+              unitCostCents: part.unitCostCents,
+              documentRef: `Venda ${number}`,
+              reason: line.product.isKit ? `Venda (kit ${line.product.name})` : 'Venda',
+              saleId: sale.id,
+              userId,
+              allowNegative: settings.allowNegativeStock,
+            });
+            alerts.push(alert);
+          } catch (error) {
+            // Deixa claro qual produto faltou, já que a venda tem vários.
+            if (error instanceof AppError && error.code === 'INSUFFICIENT_STOCK') {
+              const details = error.details as { available: number };
+              const where = line.product.isKit ? ` (do kit ${line.product.name})` : '';
+              throw unprocessable(
+                `Estoque insuficiente de ${part.name}${where}: disponível ${details.available} ${part.unit}`,
+                'INSUFFICIENT_STOCK',
+                { ...details, productId: part.productId },
+              );
+            }
+            throw error;
           }
-          throw error;
         }
       }
 
@@ -178,18 +320,20 @@ export async function cancelSale(saleId: string, reason: string, userId: string)
 
     const alerts: AlertChange[] = [];
     for (const item of sale.items) {
-      const { alert } = await applyMovement(tx, {
-        type: 'SALE_CANCEL',
-        productId: item.productId,
-        warehouseId: sale.warehouseId,
-        delta: item.quantity,
-        unitCostCents: item.unitCostCents,
-        documentRef: `Venda ${sale.number}`,
-        reason: `Cancelamento da venda ${sale.number}: ${reason}`,
-        saleId: sale.id,
-        userId,
-      });
-      alerts.push(alert);
+      for (const part of partsOfItem(item)) {
+        const { alert } = await applyMovement(tx, {
+          type: 'SALE_CANCEL',
+          productId: part.productId,
+          warehouseId: sale.warehouseId,
+          delta: roundQty(item.quantity * part.perUnit),
+          unitCostCents: part.unitCostCents,
+          documentRef: `Venda ${sale.number}`,
+          reason: `Cancelamento da venda ${sale.number}: ${reason}`,
+          saleId: sale.id,
+          userId,
+        });
+        alerts.push(alert);
+      }
     }
 
     const updated = await tx.sale.update({
@@ -217,6 +361,15 @@ export const getSale = async (saleId: string) => {
  * 3. SKU digitado.
  */
 export async function resolveCode(rawCode: string, warehouseId?: string) {
+  const result = await resolveProductCode(rawCode, warehouseId);
+  // Kit não tem estoque próprio: o "saldo" é quantos kits dá para montar.
+  if (result.product.isKit) {
+    result.product.stock = (await kitAvailability([result.product.id], warehouseId)).get(result.product.id) ?? 0;
+  }
+  return result;
+}
+
+async function resolveProductCode(rawCode: string, warehouseId?: string) {
   const code = rawCode.trim();
   if (!code) throw badRequest('Informe o código');
 
@@ -228,6 +381,7 @@ export async function resolveCode(rawCode: string, warehouseId?: string) {
     fractional: true,
     priceCents: true,
     active: true,
+    isKit: true,
     stockLevels: { where: { warehouseId }, select: { quantity: true } },
   } as const;
   type Found = NonNullable<Awaited<ReturnType<typeof prisma.product.findFirst<{ select: typeof select }>>>>;
@@ -320,7 +474,8 @@ export async function createReturn(saleId: string, input: ReturnInput, userId: s
       return {
         item,
         quantity: line.quantity,
-        refundCents: Math.round(line.quantity * item.unitPriceCents * discountFactor),
+        // Valor cobrado por unidade (com promoção) e proporcional ao desconto da venda.
+        refundCents: Math.round(line.quantity * (item.totalCents / item.quantity) * discountFactor),
         costCents: Math.round(line.quantity * item.unitCostCents),
       };
     });
@@ -353,18 +508,20 @@ export async function createReturn(saleId: string, input: ReturnInput, userId: s
 
     const alerts: AlertChange[] = [];
     for (const line of lines) {
-      const { alert } = await applyMovement(tx, {
-        type: 'SALE_RETURN',
-        productId: line.item.productId,
-        warehouseId: sale.warehouseId,
-        delta: line.quantity,
-        unitCostCents: line.item.unitCostCents,
-        documentRef: `Venda ${sale.number}`,
-        reason: `Devolução da venda ${sale.number}: ${input.reason}`,
-        saleId: sale.id,
-        userId,
-      });
-      alerts.push(alert);
+      for (const part of partsOfItem(line.item)) {
+        const { alert } = await applyMovement(tx, {
+          type: 'SALE_RETURN',
+          productId: part.productId,
+          warehouseId: sale.warehouseId,
+          delta: roundQty(line.quantity * part.perUnit),
+          unitCostCents: part.unitCostCents,
+          documentRef: `Venda ${sale.number}`,
+          reason: `Devolução da venda ${sale.number}: ${input.reason}`,
+          saleId: sale.id,
+          userId,
+        });
+        alerts.push(alert);
+      }
     }
     return { saleReturn, sale, alerts };
   });
@@ -389,6 +546,7 @@ export async function getQuickProducts(warehouseId?: string) {
     fractional: true,
     priceCents: true,
     quickSale: true,
+    isKit: true,
     stockLevels: { where: { warehouseId }, select: { quantity: true } },
   } as const;
   const sellable = { active: true, priceCents: { gt: 0 } };
@@ -423,8 +581,15 @@ export async function getQuickProducts(warehouseId?: string) {
       .slice(0, QUICK_LIMIT - pinned.length);
   }
 
-  return [...pinned, ...best].map(({ stockLevels, ...product }) => ({
+  const all = [...pinned, ...best];
+  const kits = await kitAvailability(
+    all.filter((product) => product.isKit).map((product) => product.id),
+    warehouseId,
+  );
+  return all.map(({ stockLevels, ...product }) => ({
     ...product,
-    stock: roundQty(stockLevels.reduce((sum, level) => sum + level.quantity, 0)),
+    stock: product.isKit
+      ? (kits.get(product.id) ?? 0)
+      : roundQty(stockLevels.reduce((sum, level) => sum + level.quantity, 0)),
   }));
 }

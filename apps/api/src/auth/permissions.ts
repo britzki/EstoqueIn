@@ -15,6 +15,7 @@ export const PERMISSIONS = [
   'sales:cancel',
   'settings:manage',
   'audit:read',
+  'bills:manage',
   'users:manage',
 ] as const;
 
@@ -23,7 +24,7 @@ export type Permission = (typeof PERMISSIONS)[number];
 /**
  * Matriz de permissões por perfil.
  * - ADMIN: tudo, inclusive gestão de usuários
- * - MANAGER: cadastros, ajustes, inventário, relatórios, cancelar vendas e configurações da loja
+ * - MANAGER: cadastros, ajustes, inventário, relatórios, cancelar vendas, configurações da loja e contas a pagar
  * - OPERATOR: operação do dia a dia (vendas, entradas, saídas, transferências, contagem)
  * - VIEWER: somente leitura e relatórios (ex.: contabilidade)
  */

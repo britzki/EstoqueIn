@@ -13,6 +13,7 @@ import { actorOf, diff, recordAudit, recordUpdate } from '../../lib/audit.js';
 import { evaluateStockAlert, publishAlertChanges } from '../alerts/alerts.service.js';
 import { decodeCsv, IMPORT_TEMPLATE, importProducts } from './products.import.js';
 import { minQuantitySchema, productFiltersSchema, productSchema, productUpdateSchema } from './products.schemas.js';
+import { kitAvailability, kitComponentSelect, kitCostCents, kitSchema, setKitItems } from './kits.js';
 import { sendCsv } from '../../lib/csv.js';
 
 export const productsRoutes = Router();
@@ -30,6 +31,7 @@ const PRODUCT_AUDIT_FIELDS = [
   'fractional',
   'scaleCode',
   'quickSale',
+  'isKit',
   'supplierId',
   'sourceProductId',
   'sourceYield',
@@ -146,6 +148,7 @@ productsRoutes.get('/:id', async (req, res) => {
       sourceProduct: { select: { id: true, sku: true, name: true, unit: true, costCents: true } },
       bulkProducts: { select: { id: true, sku: true, name: true, unit: true, sourceYield: true, active: true } },
       supplierProducts: { include: { supplier: { select: { id: true, name: true } } }, orderBy: { updatedAt: 'desc' } },
+      kitItems: { include: { product: { select: kitComponentSelect } } },
     },
   });
   if (!product) throw notFound('Produto');
@@ -163,14 +166,31 @@ productsRoutes.get('/:id', async (req, res) => {
   });
 
   const { stockLevels, ...rest } = product;
-  res.json({ ...rest, stock, totalQuantity: roundQty(stockLevels.reduce((sum, l) => sum + l.quantity, 0)) });
+  // Kit não tem estoque próprio: mostra quantos dá para montar e o custo pelos componentes.
+  const kit = product.isKit
+    ? {
+        available: (await kitAvailability([product.id])).get(product.id) ?? 0,
+        costCents: kitCostCents(product.kitItems),
+      }
+    : null;
+  res.json({ ...rest, stock, kit, totalQuantity: roundQty(stockLevels.reduce((sum, l) => sum + l.quantity, 0)) });
 });
 
 /** Regras do vínculo "granel de um produto fechado" e da troca para unidades inteiras. */
 async function validateProductRules(
-  data: { fractional?: boolean; sourceProductId?: string | null; sourceYield?: number | null },
+  data: { fractional?: boolean; sourceProductId?: string | null; sourceYield?: number | null; isKit?: boolean },
   productId?: string,
 ) {
+  if (data.isKit) {
+    if (data.sourceProductId) throw unprocessable('Kit não pode ser produto a granel');
+    if (data.fractional) throw unprocessable('Kit é vendido por unidade');
+    if (productId) {
+      const levels = await prisma.stockLevel.findMany({ where: { productId }, select: { quantity: true } });
+      if (levels.some((level) => level.quantity !== 0)) {
+        throw unprocessable('Este produto tem estoque próprio. Zere o saldo antes de transformá-lo em kit.');
+      }
+    }
+  }
   if (data.sourceProductId) {
     if (data.sourceProductId === productId) throw unprocessable('Um produto não pode ser granel dele mesmo');
     if (!data.sourceYield) throw badRequest('Informe quanto cada unidade do produto de origem rende a granel');
@@ -226,6 +246,18 @@ productsRoutes.patch('/:id', requirePermission('products:write'), async (req, re
   });
   if (data.minStock !== undefined) await reevaluateProductAlerts(product.id);
   res.json(product);
+});
+
+/** Composição do kit: substitui a lista de produtos. */
+productsRoutes.put('/:id/kit', requirePermission('products:write'), async (req, res) => {
+  const items = await setKitItems(param(req, 'id'), kitSchema.parse(req.body));
+  await recordAudit(actorOf(req), {
+    action: 'UPDATE',
+    entity: 'Product',
+    entityId: param(req, 'id'),
+    summary: `Composição do kit alterada: ${items.map((item) => `${item.quantity} ${item.product.unit} ${item.product.name}`).join(', ')}`,
+  });
+  res.json(items);
 });
 
 productsRoutes.post('/:id/barcode', requirePermission('products:write'), async (req, res) => {

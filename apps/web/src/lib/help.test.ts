@@ -42,6 +42,16 @@ const QUESTIONS: Array<[string, string]> = [
   ['o pedido chegou', 'pedido-chegou'],
   ['botão rápido da ração', 'botoes-rapidos'],
   ['passar os fiados do caderno', 'fiado-caderno'],
+  ['lancei o pagamento errado', 'estornar-fiado'],
+  ['como faço o cartão fidelidade', 'cartao-fidelidade'],
+  ['colocar a ração em promoção', 'promocao'],
+  ['leve 3 pague 2', 'promocao'],
+  ['montar um kit com ração e petisco', 'kit'],
+  ['onde lanço o boleto do aluguel', 'contas-pagar'],
+  ['paguei a conta com dinheiro do caixa', 'pagar-conta'],
+  ['resumo do mês para o contador', 'fechamento-mes'],
+  ['o leitor de codigo de barras nao acha o produto', 'produto-nao-encontrado'],
+  ['nao consigo entrar no sistema', 'esqueci-senha'],
 ];
 
 describe('Central de ajuda', () => {

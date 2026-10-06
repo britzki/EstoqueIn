@@ -4,6 +4,7 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 import { Activity, ArrowRight, Bell, CircleDollarSign, Package, TriangleAlert } from 'lucide-react';
 import { api } from '../lib/api';
 import { BackupWarning } from '../components/BackupWarning';
+import { BillsCard } from '../components/BillsCard';
 import { useAuth } from '../lib/auth';
 import {
   ALERT_LABEL,
@@ -71,6 +72,7 @@ export function DashboardPage() {
       />
 
       <BackupWarning />
+      <BillsCard />
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard

@@ -45,6 +45,8 @@ export const productSchema = z.object({
   supplierId: optionalId,
   /** Botão rápido na tela de venda. */
   quickSale: z.boolean().optional(),
+  /** Kit: vendido com preço próprio, baixa o estoque dos componentes. */
+  isKit: z.boolean().optional(),
   active: z.boolean().optional(),
 });
 

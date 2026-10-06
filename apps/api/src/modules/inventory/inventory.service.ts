@@ -23,7 +23,11 @@ export async function openInventory(input: CreateInventoryInput, userId: string)
     if (alreadyOpen) throw conflict(`Já existe um inventário aberto para ${warehouse.name}`);
 
     const products = await tx.product.findMany({
-      where: { active: true, category: input.category ?? undefined },
+      where: {
+        isKit: false,
+        active: true,
+        category: input.category ?? undefined,
+      },
       select: { id: true, stockLevels: { where: { warehouseId: warehouse.id }, select: { quantity: true } } },
     });
     if (products.length === 0) throw unprocessable('Nenhum produto ativo para inventariar');

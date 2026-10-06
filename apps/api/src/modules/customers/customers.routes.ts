@@ -11,8 +11,10 @@ import { actorOf, diff, recordAudit, recordUpdate } from '../../lib/audit.js';
 import { can } from '../../auth/permissions.js';
 import { currentUser, requirePermission } from '../../middleware/auth.js';
 import { getRepurchaseReminders } from './repurchase.js';
+import { getCustomerLoyalty } from '../loyalty/loyalty.service.js';
 import {
   accountPaymentSchema,
+  cancelAccountPayment,
   getAccountStatement,
   getBalances,
   getCustomerBalance,
@@ -96,6 +98,11 @@ customersRoutes.get('/:id', async (req, res) => {
   res.json({ ...customer, reminders, balanceCents: await getCustomerBalance(customer.id) });
 });
 
+/** Cartão fidelidade do cliente: progresso e brindes disponíveis. */
+customersRoutes.get('/:id/loyalty', async (req, res) => {
+  res.json(await getCustomerLoyalty(param(req, 'id')));
+});
+
 /** Extrato do fiado: vendas, devoluções e pagamentos, com o saldo após cada lançamento. */
 customersRoutes.get('/:id/account', async (req, res) => {
   res.json(await getAccountStatement(param(req, 'id')));
@@ -113,6 +120,23 @@ customersRoutes.post('/:id/payments', requirePermission('sales:create'), async (
       `(${input.method}), em aberto ${formatCents(result.balanceCents)}`,
   });
   res.status(201).json(result);
+});
+
+/** Estorno de pagamento de fiado lançado por engano (gerente ou administrador). */
+customersRoutes.post('/:id/payments/:paymentId/cancel', requirePermission('sales:cancel'), async (req, res) => {
+  const { reason } = z
+    .object({ reason: z.string().trim().min(3, 'Informe o motivo do estorno').max(160) })
+    .parse(req.body);
+  const result = await cancelAccountPayment(param(req, 'id'), param(req, 'paymentId'), reason, currentUser(req).id);
+  await recordAudit(actorOf(req), {
+    action: 'UPDATE',
+    entity: 'CustomerPayment',
+    entityId: result.payment.id,
+    summary:
+      `Fiado de ${result.customer.name}: pagamento de ${formatCents(result.payment.amountCents)} estornado (${reason}), ` +
+      `em aberto ${formatCents(result.balanceCents)}`,
+  });
+  res.json(result);
 });
 
 /** Limite de fiado é decisão do gerente: o operador cadastra clientes, mas não mexe no limite. */

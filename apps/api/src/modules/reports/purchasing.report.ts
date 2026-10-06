@@ -38,7 +38,7 @@ export async function getPurchaseSuggestion({ days, coverDays, warehouseId }: Pu
   const since = new Date(Date.now() - days * DAY_MS);
   const [products, consumption, onOrderMap] = await Promise.all([
     prisma.product.findMany({
-      where: { active: true, sourceProductId: null },
+      where: { active: true, sourceProductId: null, isKit: false },
       include: {
         stockLevels: { where: { warehouseId } },
         supplier: { select: { id: true, name: true } },
