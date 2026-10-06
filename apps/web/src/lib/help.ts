@@ -667,6 +667,18 @@ export const HELP_ARTICLES: HelpArticle[] = [
     routes: ['/promotions', '/sales/new'],
   },
   {
+    id: 'categorias',
+    category: 'Produtos e cadastros',
+    question: 'Tem categoria repetida ou escrita errado. Como arrumo?',
+    answer: [
+      'Em Produtos, clique em Categorias. Aparecem todas, com quantos produtos há em cada.',
+      'Renomear: muda o nome em todos os produtos de uma vez. Para juntar duas (ex.: "Racao" e "Rações"), renomeie uma com o nome exato da outra.',
+      'Remover: os produtos ficam sem categoria. Se um cartão fidelidade usa a categoria, mude o cartão antes.',
+    ],
+    keywords: ['categoria', 'categorias', 'renomear', 'juntar', 'repetida', 'duplicada', 'escrita errado', 'agrupar'],
+    routes: ['/products'],
+  },
+  {
     id: 'kit',
     category: 'Produtos e cadastros',
     question: 'Como monto um kit (vários produtos vendidos juntos)?',

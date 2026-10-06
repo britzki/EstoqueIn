@@ -13,6 +13,7 @@ import {
   Button,
   Card,
   CardHeader,
+  DecimalInput,
   ErrorMessage,
   Input,
   Modal,
@@ -158,12 +159,9 @@ export function InventoryDetailPage() {
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Input
-                  type="number"
-                  min={0.001}
-                  step="any"
+                <DecimalInput
                   value={scan.quantity}
-                  onChange={(e) => setScan({ ...scan, quantity: e.target.value })}
+                  onChange={(value) => setScan({ ...scan, quantity: value })}
                   aria-label="Quantidade"
                 />
                 <Select
@@ -313,12 +311,9 @@ function ItemRow({
       <Td className="text-right tabular-nums">{formatNumber(item.expectedQuantity)}</Td>
       <Td className="text-right">
         {editable ? (
-          <Input
-            type="number"
-            min={0}
-            step="any"
+          <DecimalInput
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(value) => setValue(value)}
             onBlur={() => value !== initial && save.mutate()}
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
             className="ml-auto h-8 w-24 text-right"

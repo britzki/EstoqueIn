@@ -13,6 +13,7 @@ import { actorOf, diff, recordAudit, recordUpdate } from '../../lib/audit.js';
 import { evaluateStockAlert, publishAlertChanges } from '../alerts/alerts.service.js';
 import { decodeCsv, IMPORT_TEMPLATE, importProducts } from './products.import.js';
 import { minQuantitySchema, productFiltersSchema, productSchema, productUpdateSchema } from './products.schemas.js';
+import { categoriesRoutes } from './categories.js';
 import { kitAvailability, kitComponentSelect, kitCostCents, kitSchema, setKitItems } from './kits.js';
 import { sendCsv } from '../../lib/csv.js';
 
@@ -96,6 +97,9 @@ productsRoutes.get('/', async (req, res) => {
   }));
   res.json(paginated(data, total, filters));
 });
+
+// Gerenciar categorias (renomear, juntar, remover): antes de '/:id' para não confundir com um produto.
+productsRoutes.use('/categories', categoriesRoutes);
 
 productsRoutes.get('/categories', async (_req, res) => {
   const rows = await prisma.product.findMany({

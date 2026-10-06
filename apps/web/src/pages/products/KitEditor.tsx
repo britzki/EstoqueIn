@@ -3,10 +3,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useToast } from '../../lib/toast';
-import { formatMoney, formatNumber, quantityStep } from '../../lib/format';
+import { formatMoney, formatNumber } from '../../lib/format';
 import type { KitItem, Product, ProductDetail } from '../../lib/types';
 import { ProductPicker } from '../../components/ProductPicker';
-import { Button, Card, CardHeader, ErrorMessage, Input } from '../../components/ui';
+import { Button, Card, CardHeader, DecimalInput, ErrorMessage } from '../../components/ui';
 
 interface Line {
   productId: string;
@@ -95,14 +95,11 @@ export function KitEditor({ product, editable }: { product: ProductDetail; edita
                   {line.sku} · custo {formatMoney(line.costCents)}/{line.unit}
                 </span>
               </span>
-              <Input
-                type="number"
-                min={quantityStep(line.fractional)}
-                step={quantityStep(line.fractional)}
+              <DecimalInput
                 value={line.quantity}
                 disabled={!editable}
-                onChange={(e) =>
-                  setLines((current) => current.map((l, i) => (i === index ? { ...l, quantity: e.target.value } : l)))
+                onChange={(value) =>
+                  setLines((current) => current.map((l, i) => (i === index ? { ...l, quantity: value } : l)))
                 }
                 className="h-9 w-20 text-right"
                 aria-label={`Quantidade de ${line.name} no kit`}

@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { useToast } from '../../lib/toast';
-import { FRACTIONAL_UNITS, PAYMENT_LABEL, formatMoney, formatNumber, quantityStep } from '../../lib/format';
+import { PAYMENT_LABEL, formatMoney, formatNumber } from '../../lib/format';
 import type { PaymentMethod, SaleDetail } from '../../lib/types';
-import { Button, ErrorMessage, Input, Select, Textarea } from '../../components/ui';
+import { Button, DecimalInput, ErrorMessage, Select, Textarea } from '../../components/ui';
 
 const METHODS: PaymentMethod[] = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER'];
 const toNumber = (text: string) => Number(text.replace(',', '.')) || 0;
@@ -62,14 +62,10 @@ export function ReturnPanel({ sale, onDone }: { sale: SaleDetail; onDone: () => 
                 </span>
               </span>
               <span className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min={0}
-                  max={max}
-                  step={quantityStep(FRACTIONAL_UNITS.includes(item.unit) || !Number.isInteger(item.quantity))}
+                <DecimalInput
                   disabled={max <= 0}
                   value={quantities[item.id] ?? ''}
-                  onChange={(e) => setQuantities((current) => ({ ...current, [item.id]: e.target.value }))}
+                  onChange={(value) => setQuantities((current) => ({ ...current, [item.id]: value }))}
                   placeholder="0"
                   className="h-9 w-24 text-right"
                   aria-label={`Quantidade devolvida de ${item.description}`}

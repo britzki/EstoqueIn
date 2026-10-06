@@ -17,7 +17,7 @@ import { api, ApiError } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { useCurrentCash, useDebounced, useSaleWarehouse, useStoreSettings } from '../../lib/hooks';
 import { useToast } from '../../lib/toast';
-import { centsToInput, formatMoney, formatNumber, parseMoneyInput, quantityStep } from '../../lib/format';
+import { centsToInput, formatMoney, formatNumber, parseMoneyInput } from '../../lib/format';
 import type {
   LoyaltyProgress,
   Paginated,
@@ -32,7 +32,17 @@ import { priceLine, promotionLabel, useActivePromotions } from '../../lib/pricin
 import { useAuth } from '../../lib/auth';
 import { useReceiptPrinter } from '../../components/Receipt';
 import { CustomerPicker, type CustomerChoice } from '../../components/CustomerPicker';
-import { Badge, Button, Card, EmptyState, ErrorMessage, Input, PageHeader, Select } from '../../components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  DecimalInput,
+  EmptyState,
+  ErrorMessage,
+  Input,
+  PageHeader,
+  Select,
+} from '../../components/ui';
 import { OpenCashForm } from '../cash/CashPage';
 
 interface CartLine {
@@ -464,16 +474,13 @@ export function NewSalePage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Input
+                      <DecimalInput
                         ref={(element) => {
                           if (element) quantityRefs.current.set(line.key, element);
                           else quantityRefs.current.delete(line.key);
                         }}
-                        type="number"
-                        min={quantityStep(line.product.fractional)}
-                        step={quantityStep(line.product.fractional)}
                         value={line.quantity}
-                        onChange={(e) => setQuantity(line.key, e.target.value)}
+                        onChange={(value) => setQuantity(line.key, value)}
                         onKeyDown={(e) => e.key === 'Enter' && scanRef.current?.focus()}
                         className="h-9 w-24 text-right"
                         aria-label={`Quantidade de ${line.product.name}`}

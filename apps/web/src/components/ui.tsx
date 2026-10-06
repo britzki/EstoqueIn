@@ -69,6 +69,39 @@ export const Input = ({ className, ...props }: ComponentProps<'input'>) => (
   <input className={cn(CONTROL, 'h-10', className)} {...props} />
 );
 
+/**
+ * Campo de quantidade/número no padrão brasileiro: aceita vírgula ou ponto como decimal
+ * e mostra com vírgula. O valor entregue ao formulário usa ponto ("0.35"), que é o que as contas esperam.
+ * Substitui o input type="number", que em vários navegadores recusa a vírgula.
+ */
+export function DecimalInput({
+  value,
+  onChange,
+  ...props
+}: Omit<ComponentProps<'input'>, 'value' | 'onChange' | 'type'> & {
+  value: string | number;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Input
+      {...props}
+      type="text"
+      inputMode="decimal"
+      autoComplete="off"
+      value={String(value).replace('.', ',')}
+      onChange={(event) => {
+        // Só dígitos e um separador decimal (vírgula ou ponto, tanto faz).
+        const [digits, ...decimals] = event.target.value
+          .replace(/[^\d,.]/g, '')
+          .replace(/\./g, ',')
+          .split(',');
+        const whole = digits.replace(/^0+(?=\d)/, ''); // "01" vira "1"; "0,5" continua "0,5"
+        onChange(decimals.length ? `${whole}.${decimals.join('')}` : whole);
+      }}
+    />
+  );
+}
+
 export const Select = ({ className, ...props }: ComponentProps<'select'>) => (
   <select className={cn(CONTROL, 'h-10 pr-8', className)} {...props} />
 );

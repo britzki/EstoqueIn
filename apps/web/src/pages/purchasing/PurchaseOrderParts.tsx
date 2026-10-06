@@ -7,13 +7,13 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useStoreSettings } from '../../lib/hooks';
 import { useToast } from '../../lib/toast';
-import { formatDate, formatMoney, formatNumber, quantityStep, whatsappLink } from '../../lib/format';
+import { formatDate, formatMoney, formatNumber, whatsappLink } from '../../lib/format';
 import type { PurchaseOrder, StoreSettings } from '../../lib/types';
 import {
   Badge,
   Button,
+  DecimalInput,
   ErrorMessage,
-  Input,
   Modal,
   Spinner,
   Table,
@@ -319,13 +319,10 @@ export function OrderDraftModal({
                 <span className="block truncate text-slate-900">{line.name}</span>
                 <span className="text-xs text-slate-500">{line.sku}</span>
               </span>
-              <Input
-                type="number"
-                min={quantityStep(line.fractional)}
-                step={quantityStep(line.fractional)}
+              <DecimalInput
                 value={line.text}
-                onChange={(e) =>
-                  setLines((current) => current.map((l, i) => (i === index ? { ...l, text: e.target.value } : l)))
+                onChange={(value) =>
+                  setLines((current) => current.map((l, i) => (i === index ? { ...l, text: value } : l)))
                 }
                 className="h-9 w-24 text-right"
                 aria-label={`Quantidade de ${line.name}`}

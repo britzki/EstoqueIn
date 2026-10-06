@@ -15,7 +15,7 @@ Roda de duas formas com o **mesmo código**: como aplicação web e como **progr
 
 | Área | O que faz |
 |---|---|
-| **Produtos** | Cadastro com SKU, código de barras (EAN/GTIN validado), categoria, unidade, preço, **custo médio ponderado** recalculado a cada entrada e estoque mínimo |
+| **Produtos** | Cadastro com SKU, código de barras (EAN/GTIN validado), categoria, unidade, preço, **custo médio ponderado** recalculado a cada entrada e estoque mínimo; **categorias** podem ser renomeadas, juntadas ou removidas de uma vez |
 | **Fornecedores** | Cadastro com CNPJ, contato e vínculo com produtos |
 | **Estoques** | Vários locais (depósito, lojas), saldo por local e **mínimo específico por estoque** |
 | **Vendas (caixa)** | Leitura por código de barras ou **etiqueta da balança**, total, desconto, troco, pagamento em uma ou duas formas, **notinha** para impressora térmica, cancelamento, **devolução parcial** com estorno proporcional e relatório com lucro |

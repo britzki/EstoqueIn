@@ -13,13 +13,14 @@ import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useActiveWarehouses, useSuppliers } from '../../lib/hooks';
 import { useToast } from '../../lib/toast';
-import { ALERT_LABEL, formatMoney, formatNumber, parseMoneyInput, quantityStep, roundQty } from '../../lib/format';
+import { ALERT_LABEL, formatMoney, formatNumber, parseMoneyInput, roundQty } from '../../lib/format';
 import type { FractionResult, MovementResult, Product, ProductDetail, TransferResult } from '../../lib/types';
 import { ProductPicker } from '../../components/ProductPicker';
 import {
   Button,
   Card,
   CardHeader,
+  DecimalInput,
   EmptyState,
   ErrorMessage,
   Field,
@@ -254,7 +255,6 @@ export function NewMovementPage() {
   ];
 
   const origin = stockIn(form.warehouseId);
-  const step = quantityStep(product?.fractional);
   const fractionReady = kind !== 'fraction' || Boolean(pack && bulk);
   const noBulkLink = kind === 'fraction' && product && detail.data && !selectedIsBulk && bulkOptions.length === 0;
 
@@ -407,13 +407,10 @@ export function NewMovementPage() {
                     hint={packStock ? `Disponível: ${formatNumber(packStock.quantity)}` : undefined}
                   >
                     {(id) => (
-                      <Input
+                      <DecimalInput
                         id={id}
-                        type="number"
-                        min={1}
-                        step={1}
                         value={form.quantity}
-                        onChange={(e) => set('quantity')(e.target.value)}
+                        onChange={(value) => set('quantity')(value)}
                         required
                       />
                     )}
@@ -424,14 +421,11 @@ export function NewMovementPage() {
                     hint="Altere só se este lote veio com peso diferente do padrão."
                   >
                     {(id) => (
-                      <Input
+                      <DecimalInput
                         id={id}
-                        type="number"
-                        min={0.001}
-                        step="any"
                         placeholder={bulk?.sourceYield ? String(bulk.sourceYield) : ''}
                         value={form.yieldPerPack}
-                        onChange={(e) => set('yieldPerPack')(e.target.value)}
+                        onChange={(value) => set('yieldPerPack')(value)}
                       />
                     )}
                   </Field>
@@ -444,13 +438,10 @@ export function NewMovementPage() {
                   hint={origin ? `Saldo atual no sistema: ${formatNumber(origin.quantity)}` : undefined}
                 >
                   {(id) => (
-                    <Input
+                    <DecimalInput
                       id={id}
-                      type="number"
-                      min={0}
-                      step={step}
                       value={form.newQuantity}
-                      onChange={(e) => set('newQuantity')(e.target.value)}
+                      onChange={(value) => set('newQuantity')(value)}
                       required
                     />
                   )}
@@ -463,15 +454,7 @@ export function NewMovementPage() {
                   hint={kind !== 'entry' && origin ? `Disponível: ${formatNumber(origin.quantity)}` : undefined}
                 >
                   {(id) => (
-                    <Input
-                      id={id}
-                      type="number"
-                      min={step}
-                      step={step}
-                      value={form.quantity}
-                      onChange={(e) => set('quantity')(e.target.value)}
-                      required
-                    />
+                    <DecimalInput id={id} value={form.quantity} onChange={(value) => set('quantity')(value)} required />
                   )}
                 </Field>
               )}

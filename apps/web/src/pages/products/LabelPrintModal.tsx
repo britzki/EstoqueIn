@@ -4,7 +4,7 @@ import { Printer } from 'lucide-react';
 import { formatMoney } from '../../lib/format';
 import type { Product } from '../../lib/types';
 import { Barcode } from '../../components/Barcode';
-import { Button, Field, Input, Modal } from '../../components/ui';
+import { Button, DecimalInput, Field, Modal } from '../../components/ui';
 
 /** Etiquetas de gôndola: nome, preço e código de barras, impressas via window.print(). */
 export function LabelPrintModal({ product, onClose }: { product: Product & { barcode: string }; onClose: () => void }) {
@@ -41,16 +41,7 @@ export function LabelPrintModal({ product, onClose }: { product: Product & { bar
         }
       >
         <Field label="Quantidade de etiquetas">
-          {(id) => (
-            <Input
-              id={id}
-              type="number"
-              min={1}
-              max={60}
-              value={copies}
-              onChange={(e) => setCopies(Number(e.target.value))}
-            />
-          )}
+          {(id) => <DecimalInput id={id} value={copies} onChange={(value) => setCopies(Number(value))} />}
         </Field>
         <p className="mt-4 mb-2 text-sm font-medium text-slate-700">Pré-visualização</p>
         <div className="w-56">{label}</div>

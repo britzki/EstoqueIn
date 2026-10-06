@@ -2,7 +2,7 @@ import { Ban, Link2, PackagePlus } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { FRACTIONAL_UNITS, formatMoney, formatNumber, roundQty, UNITS } from '../../lib/format';
 import { ProductPicker } from '../../components/ProductPicker';
-import { Badge, Field, Input, Select, Tabs } from '../../components/ui';
+import { Badge, DecimalInput, Field, Input, Select, Tabs } from '../../components/ui';
 import type { Action, ItemDecision, NfePreviewItem } from './types';
 
 /** Quantidade que entra no estoque (nota × fator) e o custo por unidade do estoque. */
@@ -178,12 +178,10 @@ export function NfeItemCard({
           </Field>
           <Field label="Estoque mínimo">
             {(id) => (
-              <Input
+              <DecimalInput
                 id={id}
-                type="number"
-                min={0}
                 value={decision.create.minStock}
-                onChange={(e) => setCreate({ minStock: e.target.value })}
+                onChange={(value) => setCreate({ minStock: value })}
               />
             )}
           </Field>
@@ -221,16 +219,7 @@ function FactorField({
 }) {
   return (
     <Field label="Conversão" hint={`1 ${item.unit} da nota = ${decision.conversionFactor || '?'} ${stockUnit}`}>
-      {(id) => (
-        <Input
-          id={id}
-          type="number"
-          min={0.001}
-          step="any"
-          value={decision.conversionFactor}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      )}
+      {(id) => <DecimalInput id={id} value={decision.conversionFactor} onChange={(value) => onChange(value)} />}
     </Field>
   );
 }

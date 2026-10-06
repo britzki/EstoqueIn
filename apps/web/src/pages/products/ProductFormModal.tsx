@@ -6,7 +6,7 @@ import { useCategories, useSuppliers } from '../../lib/hooks';
 import { FRACTIONAL_UNITS, UNITS, centsToInput, formatMoney, parseMoneyInput } from '../../lib/format';
 import { useToast } from '../../lib/toast';
 import type { Product, ProductSource } from '../../lib/types';
-import { Button, ErrorMessage, Field, Input, Modal, Select, Textarea } from '../../components/ui';
+import { Button, DecimalInput, ErrorMessage, Field, Input, Modal, Select, Textarea } from '../../components/ui';
 
 interface BarcodeLookup {
   found: boolean;
@@ -301,13 +301,10 @@ export function ProductFormModal({
                 hint="Usado ao abrir o pacote. Pode ser ajustado em cada abertura."
               >
                 {(id) => (
-                  <Input
+                  <DecimalInput
                     id={id}
-                    type="number"
-                    min={0.001}
-                    step="any"
                     value={form.sourceYield}
-                    onChange={(e) => set('sourceYield')(e.target.value)}
+                    onChange={(value) => set('sourceYield')(value)}
                     required
                   />
                 )}
@@ -360,16 +357,7 @@ export function ProductFormModal({
           error={errors.minStock?.[0]}
           hint="Por estoque. 0 = não monitorar."
         >
-          {(id) => (
-            <Input
-              id={id}
-              type="number"
-              min={0}
-              step={form.fractional ? 'any' : 1}
-              value={form.minStock}
-              onChange={(e) => set('minStock')(e.target.value)}
-            />
-          )}
+          {(id) => <DecimalInput id={id} value={form.minStock} onChange={(value) => set('minStock')(value)} />}
         </Field>
 
         <Field label="Fornecedor principal">

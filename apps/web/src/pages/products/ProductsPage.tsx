@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Package, Plus, Search, TriangleAlert, Upload } from 'lucide-react';
+import { Package, Plus, Search, Tags, TriangleAlert, Upload } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useCategories, useDebounced } from '../../lib/hooks';
@@ -24,6 +24,7 @@ import {
   Th,
 } from '../../components/ui';
 import { ProductFormModal } from './ProductFormModal';
+import { CategoriesModal } from './CategoriesModal';
 
 export function ProductsPage() {
   const { can } = useAuth();
@@ -31,6 +32,7 @@ export function ProductsPage() {
   const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState(params.get('search') ?? '');
   const [creating, setCreating] = useState(false);
+  const [managingCategories, setManagingCategories] = useState(false);
   const debouncedSearch = useDebounced(search);
   const { data: categories = [] } = useCategories();
 
@@ -69,6 +71,9 @@ export function ProductsPage() {
         description="Catálogo, saldos consolidados e situação de estoque."
         actions={
           <>
+            <Button variant="secondary" icon={<Tags className="size-4" />} onClick={() => setManagingCategories(true)}>
+              Categorias
+            </Button>
             {can('products:import') && (
               <LinkButton to="/products/import" variant="secondary" icon={<Upload className="size-4" />}>
                 Importar CSV
@@ -82,6 +87,8 @@ export function ProductsPage() {
           </>
         }
       />
+
+      {managingCategories && <CategoriesModal onClose={() => setManagingCategories(false)} />}
 
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 p-4">

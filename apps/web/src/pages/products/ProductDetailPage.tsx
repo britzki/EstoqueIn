@@ -22,9 +22,9 @@ import {
   Button,
   Card,
   CardHeader,
+  DecimalInput,
   EmptyState,
   ErrorMessage,
-  Input,
   LinkButton,
   Pagination,
   Spinner,
@@ -381,13 +381,10 @@ function StockRow({ productId, row, editable }: { productId: string; row: Produc
               save.mutate();
             }}
           >
-            <Input
-              type="number"
-              min={0}
-              step="any"
+            <DecimalInput
               value={value}
               placeholder={`padrão: ${row.effectiveMin}`}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(value) => setValue(value)}
               className="h-8 w-36 text-right"
               aria-label={`Mínimo em ${row.warehouse.name}`}
             />

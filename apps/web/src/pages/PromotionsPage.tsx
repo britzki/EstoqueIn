@@ -12,6 +12,7 @@ import {
   Badge,
   Button,
   Card,
+  DecimalInput,
   EmptyState,
   ErrorMessage,
   Field,
@@ -206,10 +207,10 @@ function PromotionModal({ onClose }: { onClose: () => void }) {
         ) : (
           <div className="grid grid-cols-2 gap-3">
             <Field label="Leve" error={errors.buyQuantity?.[0]}>
-              {(id) => <Input id={id} type="number" min={2} value={buy} onChange={(e) => setBuy(e.target.value)} />}
+              {(id) => <DecimalInput id={id} value={buy} onChange={(value) => setBuy(value)} />}
             </Field>
             <Field label="Pague" error={errors.payQuantity?.[0]}>
-              {(id) => <Input id={id} type="number" min={1} value={pay} onChange={(e) => setPay(e.target.value)} />}
+              {(id) => <DecimalInput id={id} value={pay} onChange={(value) => setPay(value)} />}
             </Field>
           </div>
         )}
