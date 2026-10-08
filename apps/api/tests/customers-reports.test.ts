@@ -179,7 +179,7 @@ describe('Sugestão de compra e produtos parados', () => {
     // O saco é aberto para granel 2 vezes no período: entra no consumo do saco.
     await movement(bag.id, 'FRACTION_OUT', -2, 10);
 
-    const res = await api().get('/api/reports/purchase-suggestion?days=30&coverDays=15').set(s.viewer.auth);
+    const res = await api().get('/api/reports/purchase-suggestion?days=30&coverDays=15').set(s.admin.auth);
     expect(res.status).toBe(200);
     expect(res.body.rows.map((r: { sku: string }) => r.sku)).toEqual(['SACO', 'CAF-500']);
     // Café: consumo 30 → 1/dia; alvo = 15 dias + mínimo 10 = 25; saldo 5 → comprar 20.
@@ -197,7 +197,7 @@ describe('Sugestão de compra e produtos parados', () => {
       estimatedCents: 16000,
     });
 
-    const csv = await api().get('/api/reports/purchase-suggestion?format=csv').set(s.viewer.auth);
+    const csv = await api().get('/api/reports/purchase-suggestion?format=csv').set(s.admin.auth);
     expect(csv.headers['content-type']).toMatch(/text\/csv/);
     expect(csv.text).toContain('Fornecedor Teste');
   });
@@ -214,7 +214,7 @@ describe('Sugestão de compra e produtos parados', () => {
     const never = await prisma.product.create({ data: { sku: 'NUNCA', name: 'Nunca vendeu', costCents: 200 } });
     await prisma.stockLevel.create({ data: { productId: never.id, warehouseId: s.store.id, quantity: 3 } });
 
-    const res = await api().get('/api/reports/stale-products?days=60').set(s.viewer.auth);
+    const res = await api().get('/api/reports/stale-products?days=60').set(s.admin.auth);
     expect(res.body.rows.map((r: { sku: string }) => r.sku)).toEqual(['CAF-500', 'NUNCA']);
     expect(res.body.rows[0]).toMatchObject({ valueCents: 4000, daysSinceExit: 90 });
     expect(res.body.rows[1]).toMatchObject({ valueCents: 600, daysSinceExit: null, lastExitAt: null });

@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
+import { canSeeFinancials } from '../../lib/visibility.js';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
@@ -29,10 +30,14 @@ const include = {
   items: { orderBy: { description: 'asc' as const } },
 } as const;
 
-const withTotal = <T extends { items: Array<{ quantity: number; unitCostCents: number }> }>(order: T) => ({
-  ...order,
-  totalCents: order.items.reduce((sum, item) => sum + Math.round(item.quantity * item.unitCostCents), 0),
-});
+/** Total estimado pelo último custo; sem permissão de números do negócio, sem custos. */
+const withTotal = <T extends { items: Array<{ quantity: number; unitCostCents: number }> }>(order: T, req: Request) =>
+  canSeeFinancials(req)
+    ? {
+        ...order,
+        totalCents: order.items.reduce((sum, item) => sum + Math.round(item.quantity * item.unitCostCents), 0),
+      }
+    : { ...order, totalCents: null, items: order.items.map((item) => ({ ...item, unitCostCents: null })) };
 
 /** Quantidade já pedida (pedidos em aberto) por produto. */
 export async function quantitiesOnOrder() {
@@ -53,13 +58,19 @@ purchaseOrdersRoutes.get('/', async (req, res) => {
     prisma.purchaseOrder.findMany({ where, include, orderBy: { number: 'desc' }, ...toSkipTake(filters) }),
     prisma.purchaseOrder.count({ where }),
   ]);
-  res.json(paginated(data.map(withTotal), total, filters));
+  res.json(
+    paginated(
+      data.map((order) => withTotal(order, req)),
+      total,
+      filters,
+    ),
+  );
 });
 
 purchaseOrdersRoutes.get('/:id', async (req, res) => {
   const order = await prisma.purchaseOrder.findUnique({ where: { id: param(req, 'id') }, include });
   if (!order) throw notFound('Pedido');
-  res.json(withTotal(order));
+  res.json(withTotal(order, req));
 });
 
 purchaseOrdersRoutes.post('/', requirePermission('products:write'), async (req, res) => {
@@ -101,7 +112,7 @@ purchaseOrdersRoutes.post('/', requirePermission('products:write'), async (req, 
     entityId: order.id,
     summary: `Pedido de compra nº ${order.number}${order.supplier ? ` para ${order.supplier.name}` : ''} (${order.items.length} produto(s))`,
   });
-  res.status(201).json(withTotal(order));
+  res.status(201).json(withTotal(order, req));
 });
 
 const STATUS_LABEL = { RECEIVED: 'recebido', CANCELLED: 'cancelado' } as const;
@@ -123,5 +134,5 @@ purchaseOrdersRoutes.post('/:id/status', requirePermission('products:write'), as
     entityId: order.id,
     summary: `Pedido de compra nº ${order.number} marcado como ${STATUS_LABEL[status]}`,
   });
-  res.json(withTotal(order));
+  res.json(withTotal(order, req));
 });

@@ -161,7 +161,7 @@ export function ProductsPage() {
                   <Th className="hidden md:table-cell">Categoria</Th>
                   <Th className="text-right">Saldo</Th>
                   <Th className="hidden sm:table-cell text-right">Mín.</Th>
-                  <Th className="hidden lg:table-cell text-right">Custo médio</Th>
+                  {can('reports:read') && <Th className="hidden lg:table-cell text-right">Custo médio</Th>}
                   <Th className="hidden lg:table-cell text-right">Preço</Th>
                   <Th>Situação</Th>
                 </tr>
@@ -192,7 +192,9 @@ export function ProductsPage() {
                       <span className="text-xs font-normal text-slate-500">{product.unit}</span>
                     </Td>
                     <Td className="hidden sm:table-cell text-right tabular-nums">{product.minStock}</Td>
-                    <Td className="hidden lg:table-cell text-right tabular-nums">{formatMoney(product.costCents)}</Td>
+                    {can('reports:read') && (
+                      <Td className="hidden lg:table-cell text-right tabular-nums">{formatMoney(product.costCents)}</Td>
+                    )}
                     <Td className="hidden lg:table-cell text-right tabular-nums">{formatMoney(product.priceCents)}</Td>
                     <Td>
                       {!product.active ? (

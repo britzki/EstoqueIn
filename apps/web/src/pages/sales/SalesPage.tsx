@@ -7,6 +7,7 @@ import { useStoreSettings } from '../../lib/hooks';
 import { useToast } from '../../lib/toast';
 import { PAYMENT_LABEL, dayEndIso, dayStartIso, formatDateTime, formatMoney, formatNumber } from '../../lib/format';
 import type { Paginated, SaleDetail, SaleListItem } from '../../lib/types';
+import { addressLine, DELIVERY_STATUS } from '../../lib/delivery';
 import { useReceiptPrinter } from '../../components/Receipt';
 import { ReturnPanel } from './ReturnPanel';
 import {
@@ -138,7 +139,7 @@ export function SalesPage() {
   );
 }
 
-function SaleModal({ saleId, onClose }: { saleId: string; onClose: () => void }) {
+export function SaleModal({ saleId, onClose }: { saleId: string; onClose: () => void }) {
   const { can } = useAuth();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -153,7 +154,7 @@ function SaleModal({ saleId, onClose }: { saleId: string; onClose: () => void })
     mutationFn: () => api.post<SaleDetail>(`/sales/${saleId}/cancel`, { reason }),
     onSuccess: () => {
       toast.success('Venda cancelada', 'Os itens voltaram ao estoque.');
-      for (const key of ['sales', 'sale', 'products', 'product', 'alerts', 'dashboard', 'movements']) {
+      for (const key of ['sales', 'sale', 'deliveries', 'products', 'product', 'alerts', 'dashboard', 'movements']) {
         queryClient.invalidateQueries({ queryKey: [key] });
       }
       setMode(null);
@@ -234,6 +235,12 @@ function SaleModal({ saleId, onClose }: { saleId: string; onClose: () => void })
                   <dd className="tabular-nums">- {formatMoney(data.discountCents)}</dd>
                 </div>
               )}
+              {(data.deliveryFeeCents ?? 0) > 0 && (
+                <div className="flex justify-between text-slate-600">
+                  <dt>Taxa de entrega</dt>
+                  <dd className="tabular-nums">{formatMoney(data.deliveryFeeCents!)}</dd>
+                </div>
+              )}
               <div className="flex justify-between text-base font-semibold text-slate-900">
                 <dt>Total</dt>
                 <dd className="tabular-nums">{formatMoney(data.totalCents)}</dd>
@@ -252,6 +259,13 @@ function SaleModal({ saleId, onClose }: { saleId: string; onClose: () => void })
               )}
             </dl>
             {data.customerName && <p className="text-sm text-slate-600">Cliente: {data.customerName}</p>}
+            {data.delivery && (
+              <p className="text-sm text-slate-600">
+                Entrega nº {data.delivery.number}: {addressLine(data.delivery)} ·{' '}
+                <strong>{DELIVERY_STATUS[data.delivery.status]}</strong>
+                {data.delivery.courier && ` com ${data.delivery.courier.name}`}
+              </p>
+            )}
 
             {hasReturns && (
               <div className="rounded-lg border border-slate-200">

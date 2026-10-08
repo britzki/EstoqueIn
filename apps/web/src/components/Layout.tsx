@@ -17,6 +17,7 @@ import {
   PackagePlus,
   ReceiptText,
   Truck,
+  Bike,
   KeyRound,
   Receipt,
   ScrollText,
@@ -32,7 +33,7 @@ import clsx from 'clsx';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ROLE_LABEL } from '../lib/format';
-import type { Permission } from '../lib/types';
+import type { DeliveryDetail, Permission } from '../lib/types';
 import { Logo } from './Logo';
 import { Spinner } from './ui';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -79,6 +80,13 @@ export function Layout() {
     queryFn: () => api.get<{ open: number; unacknowledged: number }>('/alerts/summary'),
     refetchInterval: 30_000,
   });
+  // Mesma consulta do painel de entregas (o cache é compartilhado).
+  const { data: openDeliveries } = useQuery({
+    queryKey: ['deliveries', 'board'],
+    queryFn: () => api.get<DeliveryDetail[]>('/deliveries'),
+    refetchInterval: 30_000,
+    select: (list) => list.filter((d) => d.status === 'PENDING' || d.status === 'OUT' || d.status === 'FAILED').length,
+  });
 
   const sections: Array<{ title?: string; items: NavItem[] }> = [
     {
@@ -92,6 +100,7 @@ export function Layout() {
       items: [
         { to: '/sales/new', label: 'Nova venda', icon: <ShoppingCart />, permission: 'sales:create' },
         { to: '/sales', label: 'Vendas', icon: <Receipt />, end: true },
+        { to: '/deliveries', label: 'Entregas', icon: <Bike />, badge: openDeliveries },
         { to: '/cash', label: 'Caixa', icon: <Wallet /> },
         { to: '/customers', label: 'Clientes', icon: <Contact /> },
         { to: '/promotions', label: 'Promoções', icon: <BadgePercent /> },

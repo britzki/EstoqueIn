@@ -83,7 +83,7 @@ describe('Fiado', () => {
     expect(body.entries[0]).toMatchObject({ kind: 'PAYMENT', amountCents: -3000, balanceCents: 5000 });
 
     // Caixa: 250 + 120 (fiado em dinheiro). Venda no fiado não é dinheiro na gaveta.
-    const summary = (await api().get(`/api/cash/${cash.id}`).set(s.operator.auth)).body.summary;
+    const summary = (await api().get(`/api/cash/${cash.id}`).set(s.admin.auth)).body.summary;
     expect(summary).toMatchObject({
       expectedCashCents: 37000,
       revenueCents: 20000,
@@ -202,7 +202,7 @@ describe('Botões rápidos', () => {
 describe('Pedido ao fornecedor', () => {
   it('registra o pedido e a sugestão de compra desconta o que já foi pedido', async () => {
     await prisma.product.update({ where: { id: food.id }, data: { minStock: 60 } });
-    const before = await api().get('/api/reports/purchase-suggestion').set(s.viewer.auth);
+    const before = await api().get('/api/reports/purchase-suggestion').set(s.admin.auth);
     const row = before.body.rows.find((r: { sku: string }) => r.sku === 'RACAO');
     expect(row).toMatchObject({ suggested: 10, onOrder: 0 });
 
@@ -224,7 +224,7 @@ describe('Pedido ao fornecedor', () => {
       items: [{ description: 'Ração 10kg', quantity: 6, unitCostCents: 6000 }],
     });
 
-    const after = await api().get('/api/reports/purchase-suggestion').set(s.viewer.auth);
+    const after = await api().get('/api/reports/purchase-suggestion').set(s.admin.auth);
     expect(after.body.rows.find((r: { sku: string }) => r.sku === 'RACAO')).toMatchObject({ onOrder: 6, suggested: 4 });
 
     // Recebido: deixa de contar como "a caminho".
@@ -233,7 +233,7 @@ describe('Pedido ao fornecedor', () => {
       .set(s.admin.auth)
       .send({ status: 'RECEIVED' })
       .expect(200);
-    const received = await api().get('/api/reports/purchase-suggestion').set(s.viewer.auth);
+    const received = await api().get('/api/reports/purchase-suggestion').set(s.admin.auth);
     expect(received.body.rows.find((r: { sku: string }) => r.sku === 'RACAO')).toMatchObject({
       onOrder: 0,
       suggested: 10,
@@ -244,7 +244,7 @@ describe('Pedido ao fornecedor', () => {
       .send({ status: 'CANCELLED' })
       .expect(409);
 
-    const list = await api().get('/api/purchase-orders').set(s.viewer.auth);
+    const list = await api().get('/api/purchase-orders').set(s.admin.auth);
     expect(list.body.data[0]).toMatchObject({ number: 1, status: 'RECEIVED' });
   });
 

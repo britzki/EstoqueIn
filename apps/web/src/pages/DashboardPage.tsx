@@ -35,10 +35,11 @@ interface Dashboard {
     products: number;
     warehouses: number;
     stockUnits: number;
-    stockValueCents: number;
+    /** null para quem não vê números do negócio. */
+    stockValueCents: number | null;
     openAlerts: number;
     movementsToday: number;
-    salesToday: { count: number; totalCents: number };
+    salesToday: { count: number; totalCents: number } | null;
   };
   movementsByDay: Array<{ date: string; entries: number; exits: number }>;
   recentMovements: Movement[];
@@ -81,12 +82,14 @@ export function DashboardPage() {
           hint={`${formatNumber(totals.stockUnits)} unidades em ${totals.warehouses} estoques`}
           icon={<Package />}
         />
-        <StatCard
-          label="Valor em estoque"
-          value={formatCompactMoney(totals.stockValueCents)}
-          hint={`${formatMoney(totals.stockValueCents)} a custo médio`}
-          icon={<CircleDollarSign />}
-        />
+        {totals.stockValueCents !== null && (
+          <StatCard
+            label="Valor em estoque"
+            value={formatCompactMoney(totals.stockValueCents)}
+            hint={`${formatMoney(totals.stockValueCents)} a custo médio`}
+            icon={<CircleDollarSign />}
+          />
+        )}
         <StatCard
           label="Alertas abertos"
           value={formatNumber(totals.openAlerts)}
@@ -98,13 +101,22 @@ export function DashboardPage() {
           icon={<Bell />}
           tone={totals.openAlerts > 0 ? 'red' : 'slate'}
         />
-        <StatCard
-          label="Vendas hoje"
-          value={formatMoney(totals.salesToday.totalCents)}
-          hint={`${totals.salesToday.count} venda(s) · ${formatNumber(totals.movementsToday)} movimentações`}
-          icon={<Activity />}
-          tone="slate"
-        />
+        {totals.salesToday ? (
+          <StatCard
+            label="Vendas hoje"
+            value={formatMoney(totals.salesToday.totalCents)}
+            hint={`${totals.salesToday.count} venda(s) · ${formatNumber(totals.movementsToday)} movimentações`}
+            icon={<Activity />}
+            tone="slate"
+          />
+        ) : (
+          <StatCard
+            label="Movimentações hoje"
+            value={formatNumber(totals.movementsToday)}
+            icon={<Activity />}
+            tone="slate"
+          />
+        )}
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">

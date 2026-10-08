@@ -60,6 +60,12 @@ export function Receipt({ sale, settings }: { sale: SaleDetail; settings: StoreS
           </div>
         </>
       )}
+      {(sale.deliveryFeeCents ?? 0) > 0 && (
+        <div className={row}>
+          <span>Taxa de entrega</span>
+          <span>{money(sale.deliveryFeeCents!)}</span>
+        </div>
+      )}
       <div className={`${row} text-[1.25em] font-bold`}>
         <span>TOTAL R$</span>
         <span>{money(sale.totalCents)}</span>

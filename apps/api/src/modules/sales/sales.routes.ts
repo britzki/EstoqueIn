@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { canSeeFinancials, saleWithoutCost } from '../../lib/visibility.js';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
@@ -50,7 +51,13 @@ salesRoutes.get('/', async (req, res) => {
     }),
     prisma.sale.count({ where }),
   ]);
-  res.json(paginated(data, total, filters));
+  res.json(
+    paginated(
+      data.map((sale) => saleWithoutCost(req, sale)),
+      total,
+      filters,
+    ),
+  );
 });
 
 /** Usado pelo caixa: identifica o produto pelo código bipado (código de barras, etiqueta da balança ou SKU). */
@@ -69,7 +76,12 @@ salesRoutes.get('/resolve', requirePermission('sales:create'), async (req, res) 
 salesRoutes.get('/:id', async (req, res) => {
   const sale = await getSale(param(req, 'id'));
   const remaining = await returnableQuantities(sale.id);
-  res.json({ ...sale, items: sale.items.map((item) => ({ ...item, returnable: remaining.get(item.id) ?? 0 })) });
+  res.json(
+    saleWithoutCost(req, {
+      ...sale,
+      items: sale.items.map((item) => ({ ...item, returnable: remaining.get(item.id) ?? 0 })),
+    }),
+  );
 });
 
 salesRoutes.post('/:id/returns', requirePermission('sales:cancel'), async (req, res) => {
@@ -81,11 +93,11 @@ salesRoutes.post('/:id/returns', requirePermission('sales:cancel'), async (req, 
     entityId: saleReturn.saleId,
     summary: `Devolução na venda nº ${saleReturn.saleNumber}: ${input.reason}`,
   });
-  res.status(201).json(saleReturn);
+  res.status(201).json(canSeeFinancials(req) ? saleReturn : { ...saleReturn, costCents: null });
 });
 
 salesRoutes.post('/', requirePermission('sales:create'), async (req, res) => {
-  res.status(201).json(await createSale(saleSchema.parse(req.body), currentUser(req).id));
+  res.status(201).json(saleWithoutCost(req, await createSale(saleSchema.parse(req.body), currentUser(req).id)));
 });
 
 salesRoutes.post('/:id/cancel', requirePermission('sales:cancel'), async (req, res) => {
@@ -97,5 +109,5 @@ salesRoutes.post('/:id/cancel', requirePermission('sales:cancel'), async (req, r
     entityId: sale.id,
     summary: `Venda nº ${sale.number} cancelada: ${reason}`,
   });
-  res.json(sale);
+  res.json(saleWithoutCost(req, sale));
 });

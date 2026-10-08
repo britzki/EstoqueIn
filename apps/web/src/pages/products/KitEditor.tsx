@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import { useToast } from '../../lib/toast';
 import { formatMoney, formatNumber } from '../../lib/format';
 import type { KitItem, Product, ProductDetail } from '../../lib/types';
@@ -30,6 +31,8 @@ const toLine = (item: KitItem): Line => ({
 
 /** Produtos que formam o kit. Vender o kit baixa o estoque de cada um. */
 export function KitEditor({ product, editable }: { product: ProductDetail; editable: boolean }) {
+  const { can } = useAuth();
+  const canSeeCost = can('reports:read');
   const toast = useToast();
   const queryClient = useQueryClient();
   const [lines, setLines] = useState<Line[]>(product.kitItems.map(toLine));
@@ -92,7 +95,8 @@ export function KitEditor({ product, editable }: { product: ProductDetail; edita
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-slate-900">{line.name}</span>
                 <span className="text-xs text-slate-500">
-                  {line.sku} · custo {formatMoney(line.costCents)}/{line.unit}
+                  {line.sku}
+                  {canSeeCost && ` · custo ${formatMoney(line.costCents)}/${line.unit}`}
                 </span>
               </span>
               <DecimalInput
@@ -125,8 +129,12 @@ export function KitEditor({ product, editable }: { product: ProductDetail; edita
           </div>
         )}
         <p className="text-sm text-slate-600">
-          Custo do kit: <strong className="text-slate-900">{formatMoney(Math.round(cost))}</strong> · Preço de venda:{' '}
-          <strong className="text-slate-900">{formatMoney(product.priceCents)}</strong>
+          {canSeeCost && (
+            <>
+              Custo do kit: <strong className="text-slate-900">{formatMoney(Math.round(cost))}</strong> ·{' '}
+            </>
+          )}
+          Preço de venda: <strong className="text-slate-900">{formatMoney(product.priceCents)}</strong>
           {product.kit && <> · Dá para montar {formatNumber(product.kit.available)} kit(s) com o estoque atual</>}
         </p>
       </div>

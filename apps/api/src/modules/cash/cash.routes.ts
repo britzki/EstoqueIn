@@ -5,6 +5,7 @@ import { param } from '../../lib/http.js';
 import { paginated, paginationSchema, toSkipTake } from '../../lib/pagination.js';
 import { actorOf, recordAudit } from '../../lib/audit.js';
 import { formatCents } from '../../lib/money.js';
+import { canSeeFinancials } from '../../lib/visibility.js';
 import { currentUser, requirePermission } from '../../middleware/auth.js';
 import {
   addCashMovement,
@@ -20,10 +21,22 @@ import {
 
 export const cashRoutes = Router();
 
+/** Sem permissão de números do negócio: só o que é da gaveta (dinheiro), sem faturamento nem Pix/cartão. */
+function forViewer(
+  req: Parameters<typeof canSeeFinancials>[0],
+  cash: Awaited<ReturnType<typeof getCashSummary>> | null,
+) {
+  if (!cash || canSeeFinancials(req)) return cash;
+  return {
+    ...cash,
+    summary: { ...cash.summary, revenueCents: null, byMethod: { CASH: cash.summary.byMethod.CASH } },
+  };
+}
+
 /** Caixa aberto no estoque (ou null). */
 cashRoutes.get('/current', async (req, res) => {
   const warehouseId = z.string().min(1).parse(req.query.warehouseId);
-  res.json(await getOpenSession(warehouseId));
+  res.json(forViewer(req, await getOpenSession(warehouseId)));
 });
 
 /** Troco sugerido para a abertura (o que ficou na gaveta ontem). */
@@ -63,15 +76,17 @@ cashRoutes.get('/', async (req, res) => {
 });
 
 cashRoutes.get('/:id', async (req, res) => {
-  res.json(await getCashSummary(param(req, 'id')));
+  res.json(forViewer(req, await getCashSummary(param(req, 'id'))));
 });
 
 cashRoutes.post('/open', requirePermission('sales:create'), async (req, res) => {
-  res.status(201).json(await openCash(openSchema.parse(req.body), currentUser(req).id));
+  res.status(201).json(forViewer(req, await openCash(openSchema.parse(req.body), currentUser(req).id)));
 });
 
 cashRoutes.post('/:id/movements', requirePermission('sales:create'), async (req, res) => {
-  res.status(201).json(await addCashMovement(param(req, 'id'), movementSchema.parse(req.body), currentUser(req).id));
+  res
+    .status(201)
+    .json(forViewer(req, await addCashMovement(param(req, 'id'), movementSchema.parse(req.body), currentUser(req).id)));
 });
 
 cashRoutes.post('/:id/close', requirePermission('sales:create'), async (req, res) => {
@@ -89,5 +104,5 @@ cashRoutes.post('/:id/close', requirePermission('sales:create'), async (req, res
         ? ''
         : `; retirado ${formatCents(session.summary.closingWithdrawalCents ?? 0)}, ficou na gaveta ${formatCents(session.keptCents)}`),
   });
-  res.json(session);
+  res.json(forViewer(req, session));
 });

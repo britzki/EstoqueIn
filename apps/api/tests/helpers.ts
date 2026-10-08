@@ -10,6 +10,9 @@ export const api = () => request(app);
 
 export async function resetDatabase() {
   await prisma.auditLog.deleteMany();
+  await prisma.delivery.deleteMany();
+  await prisma.courier.deleteMany();
+  await prisma.customerAddress.deleteMany();
   await prisma.bill.deleteMany();
   await prisma.loyaltyRule.deleteMany();
   await prisma.promotion.deleteMany();

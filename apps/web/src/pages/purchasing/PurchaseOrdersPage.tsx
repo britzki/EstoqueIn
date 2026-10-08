@@ -94,7 +94,9 @@ export function PurchaseOrdersPage() {
                     <Td>{order.supplier?.name ?? '—'}</Td>
                     <Td className="hidden sm:table-cell">{formatDate(order.createdAt)}</Td>
                     <Td className="hidden md:table-cell text-right tabular-nums">{order.items.length}</Td>
-                    <Td className="text-right tabular-nums">{formatMoney(order.totalCents)}</Td>
+                    <Td className="text-right tabular-nums">
+                      {order.totalCents === null ? '—' : formatMoney(order.totalCents)}
+                    </Td>
                     <Td>
                       <Badge tone={ORDER_STATUS[order.status].tone}>{ORDER_STATUS[order.status].label}</Badge>
                     </Td>

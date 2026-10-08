@@ -12,6 +12,7 @@ import {
   Star,
   Trash2,
   Gift,
+  Truck,
 } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { cn } from '../../lib/cn';
@@ -44,6 +45,15 @@ import {
   Select,
 } from '../../components/ui';
 import { OpenCashForm } from '../cash/CashPage';
+import { useDeliverySlipPrinter } from '../../components/DeliverySlip';
+import { deliveryFee, formatDue } from '../../lib/delivery';
+import {
+  DeliveryOptions,
+  deliveryPayload,
+  deliveryReady,
+  newDeliveryChoice,
+  type DeliveryChoice,
+} from './DeliveryOptions';
 
 interface CartLine {
   key: number;
@@ -78,6 +88,7 @@ export function NewSalePage() {
   const cash = useCurrentCash(activeWarehouse);
   const cashClosed = Boolean(settings?.requireCashSession) && cash.isSuccess && cash.data === null;
   const receipt = useReceiptPrinter(settings);
+  const deliverySlip = useDeliverySlipPrinter(settings);
   const scanRef = useRef<HTMLInputElement>(null);
   const quantityRefs = useRef(new Map<number, HTMLInputElement>());
 
@@ -93,6 +104,8 @@ export function NewSalePage() {
   const [customer, setCustomer] = useState<CustomerChoice>({ customer: null, name: '' });
   const [lastSale, setLastSale] = useState<SaleDetail | null>(null);
   const [focusLine, setFocusLine] = useState<number | null>(null);
+  /** null = venda no balcão. */
+  const [delivery, setDelivery] = useState<DeliveryChoice | null>(null);
 
   // Busca por nome enquanto digita (códigos são resolvidos no Enter).
   const search = useDebounced(code.trim(), 250);
@@ -190,7 +203,10 @@ export function NewSalePage() {
 
   const subtotal = cart.reduce((sum, line) => sum + lineTotal(line), 0);
   const discountCents = Math.min(parseMoneyInput(discount) ?? 0, subtotal);
-  const total = subtotal - discountCents;
+  const itemsTotal = subtotal - discountCents;
+  const feeCents = delivery ? deliveryFee(itemsTotal, settings, delivery.waiveFee) : 0;
+  const total = itemsTotal + feeCents;
+  const collectCash = Boolean(delivery?.collectOnDelivery) && method === 'CASH' && !split;
   const receivedCents = parseMoneyInput(received) ?? 0;
   const firstCents = Math.min(parseMoneyInput(firstAmount) ?? 0, total);
   const change = !split && method === 'CASH' && receivedCents > total ? receivedCents - total : 0;
@@ -237,7 +253,8 @@ export function NewSalePage() {
     !splitInvalid &&
     !cashClosed &&
     !accountNeedsCustomer &&
-    !overLimit;
+    !overLimit &&
+    (!delivery || (Boolean(customer.customer) && deliveryReady(delivery)));
 
   const finish = useMutation({
     mutationFn: () =>
@@ -260,6 +277,7 @@ export function NewSalePage() {
               : [{ method, amountCents: method === 'CASH' && receivedCents > total ? receivedCents : total }],
         customerId: customer.customer?.id,
         customerName: customer.customer ? undefined : customer.name,
+        delivery: delivery ? deliveryPayload(delivery) : undefined,
       }),
     onSuccess: (sale) => {
       setLastSale(sale);
@@ -269,10 +287,25 @@ export function NewSalePage() {
       setFirstAmount('');
       setSplit(false);
       setCustomer({ customer: null, name: '' });
+      setDelivery(null);
       if (sale.alertsOpened)
         toast.warning('Estoque baixo', `${sale.alertsOpened} produto(s) desta venda atingiram o mínimo.`);
-      if (settings?.autoPrint) receipt.print(sale);
-      for (const key of ['products', 'product', 'alerts', 'dashboard', 'movements', 'sales', 'warehouses', 'cash']) {
+      // Venda para entrega: a guia vai junto com o pacote (tem os itens, o endereço e o que cobrar).
+      if (settings?.autoPrint) {
+        if (sale.delivery) void deliverySlip.print(sale.delivery.id);
+        else receipt.print(sale);
+      }
+      for (const key of [
+        'deliveries',
+        'products',
+        'product',
+        'alerts',
+        'dashboard',
+        'movements',
+        'sales',
+        'warehouses',
+        'cash',
+      ]) {
         queryClient.invalidateQueries({ queryKey: [key] });
       }
       scanRef.current?.focus();
@@ -304,6 +337,7 @@ export function NewSalePage() {
   return (
     <>
       {receipt.portal}
+      {deliverySlip.portal}
       <PageHeader
         title="Nova venda"
         description="Bipe o produto ou a etiqueta da balança. F2 finaliza a venda, F4 volta para a leitura."
@@ -343,14 +377,35 @@ export function NewSalePage() {
               <p className="font-semibold text-slate-900">
                 Venda nº {lastSale.number} registrada · {formatMoney(lastSale.totalCents)}
               </p>
-              {lastSale.changeCents > 0 && (
-                <p className="text-lg font-bold text-emerald-800">Troco: {formatMoney(lastSale.changeCents)}</p>
+              {lastSale.delivery ? (
+                <p className="text-sm text-emerald-900">
+                  Entrega nº {lastSale.delivery.number} ·{' '}
+                  {lastSale.delivery.scheduled ? 'agendada para' : 'entregar até'} {formatDue(lastSale.delivery.dueAt)}
+                  {lastSale.delivery.collectOnDelivery && lastSale.changeCents > 0 && (
+                    <> · levar troco de {formatMoney(lastSale.changeCents)}</>
+                  )}
+                </p>
+              ) : (
+                lastSale.changeCents > 0 && (
+                  <p className="text-lg font-bold text-emerald-800">Troco: {formatMoney(lastSale.changeCents)}</p>
+                )
               )}
             </div>
           </div>
-          <Button variant="secondary" icon={<Printer className="size-4" />} onClick={() => receipt.print(lastSale)}>
-            Imprimir notinha
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {lastSale.delivery && (
+              <Button
+                variant="secondary"
+                icon={<Truck className="size-4" />}
+                onClick={() => void deliverySlip.print(lastSale.delivery!.id)}
+              >
+                Imprimir guia de entrega
+              </Button>
+            )}
+            <Button variant="secondary" icon={<Printer className="size-4" />} onClick={() => receipt.print(lastSale)}>
+              Imprimir notinha
+            </Button>
+          </div>
         </div>
       )}
 
@@ -533,6 +588,12 @@ export function NewSalePage() {
                 />
               </dd>
             </div>
+            {delivery && (
+              <div className="flex justify-between text-slate-600">
+                <dt>Taxa de entrega</dt>
+                <dd className="tabular-nums">{feeCents > 0 ? formatMoney(feeCents) : 'grátis'}</dd>
+              </div>
+            )}
           </dl>
           <div className="mt-4 flex items-end justify-between border-t border-slate-200 pt-4">
             <span className="text-sm font-medium text-slate-600">Total</span>
@@ -566,7 +627,7 @@ export function NewSalePage() {
           {!split && method === 'CASH' && (
             <div className="mt-4">
               <label htmlFor="sale-received" className="mb-1.5 block text-sm font-medium text-slate-700">
-                Valor recebido (R$)
+                {collectCash ? 'Cliente vai pagar com (troco para quanto?)' : 'Valor recebido (R$)'}
               </label>
               <Input
                 id="sale-received"
@@ -579,7 +640,7 @@ export function NewSalePage() {
                 <p className="mt-1 text-sm text-red-600">Faltam {formatMoney(total - receivedCents)}</p>
               ) : (
                 <p className="mt-2 flex justify-between text-sm">
-                  <span className="text-slate-600">Troco</span>
+                  <span className="text-slate-600">{collectCash ? 'Troco que o entregador leva' : 'Troco'}</span>
                   <strong className="text-lg text-slate-900 tabular-nums">{formatMoney(change)}</strong>
                 </p>
               )}
@@ -631,7 +692,14 @@ export function NewSalePage() {
             <label htmlFor="sale-customer" className="mb-1.5 block text-sm font-medium text-slate-700">
               Cliente (opcional)
             </label>
-            <CustomerPicker value={customer} onChange={setCustomer} />
+            <CustomerPicker
+              value={customer}
+              onChange={(next) => {
+                setCustomer(next);
+                // Outro cliente, outros endereços.
+                setDelivery((current) => current && { ...current, addressId: '' });
+              }}
+            />
             {loyalty.map((card) => {
               const remaining = card.available - giftsInCart(card.rule.id) / card.rule.rewardQuantity;
               return (
@@ -659,6 +727,24 @@ export function NewSalePage() {
                 </div>
               );
             })}
+            <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                checked={delivery !== null}
+                onChange={(e) => setDelivery(e.target.checked ? newDeliveryChoice() : null)}
+                className="size-4 accent-brand-700"
+              />
+              <Truck className="size-4 text-slate-500" />É para entregar
+            </label>
+            {delivery && (
+              <DeliveryOptions
+                value={delivery}
+                onChange={setDelivery}
+                customerId={customer.customer?.id}
+                feeCents={feeCents}
+                settings={settings}
+              />
+            )}
             {accountNeedsCustomer && (
               <p className="mt-2 text-sm text-amber-700">Para vender fiado, escolha ou cadastre o cliente.</p>
             )}

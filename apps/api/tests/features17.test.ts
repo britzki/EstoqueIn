@@ -207,12 +207,13 @@ describe('Kits', () => {
   });
 
   it('vender o kit baixa os componentes; cancelar e devolver devolvem', async () => {
-    const detail = (await api().get(`/api/products/${kit.id}`).set(s.operator.auth)).body;
+    const detail = (await api().get(`/api/products/${kit.id}`).set(s.admin.auth)).body;
     expect(detail.kit).toEqual({ available: 5, costCents: 7600 });
 
     const sale = await sell([{ productId: kit.id, quantity: 2 }], pix(24000));
     expect(sale.status).toBe(201);
-    expect(sale.body).toMatchObject({ totalCents: 24000, costCents: 15200 });
+    expect(sale.body.totalCents).toBe(24000);
+    expect((await prisma.sale.findUniqueOrThrow({ where: { id: sale.body.id } })).costCents).toBe(15200);
     expect([
       await stockOf(food.id, s.store.id),
       await stockOf(treat.id, s.store.id),
@@ -347,8 +348,7 @@ describe('Fechamento do mês', () => {
     expect(res.body.resultCents).toBe(5000);
     expect(res.body.account).toMatchObject({ soldCents: 10000, receivedCents: 0, outstandingCents: 10000, debtors: 1 });
     await api().get(`/api/reports/monthly?from=${from}&to=${to}`).set(s.operator.auth).expect(403);
-    // Somente leitura vê o mês, mas sem as contas a pagar.
-    const viewer = await api().get(`/api/reports/monthly?from=${from}&to=${to}`).set(s.viewer.auth);
-    expect(viewer.body).toMatchObject({ expenses: null, resultCents: null, sales: { revenueCents: 20000 } });
+    // Relatórios são só de administrador e gerente.
+    await api().get(`/api/reports/monthly?from=${from}&to=${to}`).set(s.viewer.auth).expect(403);
   });
 });

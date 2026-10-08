@@ -16,7 +16,8 @@ import {
   parseMoneyInput,
   whatsappLink,
 } from '../lib/format';
-import type { Customer, Paginated, RepurchaseReminder } from '../lib/types';
+import type { Customer, CustomerAddress, Paginated, RepurchaseReminder } from '../lib/types';
+import { CustomerAddresses } from './customers/CustomerAddresses';
 import { AccountSection, DebtorsCard } from './customers/CustomerAccount';
 import { CustomerLoyalty } from './customers/CustomerLoyalty';
 import {
@@ -40,6 +41,7 @@ import {
 } from '../components/ui';
 
 interface CustomerDetail extends Customer {
+  addresses: CustomerAddress[];
   sales: Array<{
     id: string;
     number: number;
@@ -319,6 +321,7 @@ function CustomerModal({
         <div className="space-y-5">
           <AccountSection customer={data} />
           <CustomerLoyalty customerId={data.id} />
+          <CustomerAddresses customerId={data.id} addresses={data.addresses} />
           {data.notes && <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-700">{data.notes}</p>}
           {data.reminders.length > 0 && (
             <div>

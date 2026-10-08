@@ -165,12 +165,14 @@ function CashSummaryView({ cash }: { cash: CashDetail }) {
           hint={`${summary.cancelledCount} cancelada(s)`}
           icon={<Receipt />}
         />
-        <StatCard
-          label="Faturamento"
-          value={formatMoney(summary.revenueCents)}
-          hint={summary.returnsCount ? `já sem ${summary.returnsCount} devolução(ões)` : undefined}
-          icon={<Banknote />}
-        />
+        {summary.revenueCents !== null && (
+          <StatCard
+            label="Faturamento"
+            value={formatMoney(summary.revenueCents)}
+            hint={summary.returnsCount ? `já sem ${summary.returnsCount} devolução(ões)` : undefined}
+            icon={<Banknote />}
+          />
+        )}
         <StatCard label="Troco inicial" value={formatMoney(cash.openingCents)} icon={<Wallet />} tone="slate" />
         <StatCard
           label="Dinheiro esperado na gaveta"
@@ -186,14 +188,16 @@ function CashSummaryView({ cash }: { cash: CashDetail }) {
           <CardHeader title="Recebido por forma de pagamento" />
           <Table>
             <tbody>
-              {METHODS.filter((method) => !['OTHER', 'ACCOUNT'].includes(method) || summary.byMethod[method]).map(
-                (method) => (
-                  <tr key={method}>
-                    <Td>{method === 'ACCOUNT' ? 'Vendido no fiado (a receber)' : PAYMENT_LABEL[method]}</Td>
-                    <Td className="text-right tabular-nums">{formatMoney(summary.byMethod[method])}</Td>
-                  </tr>
-                ),
-              )}
+              {METHODS.filter(
+                (method) =>
+                  summary.byMethod[method] !== undefined &&
+                  (!['OTHER', 'ACCOUNT'].includes(method) || summary.byMethod[method]),
+              ).map((method) => (
+                <tr key={method}>
+                  <Td>{method === 'ACCOUNT' ? 'Vendido no fiado (a receber)' : PAYMENT_LABEL[method]}</Td>
+                  <Td className="text-right tabular-nums">{formatMoney(summary.byMethod[method] ?? 0)}</Td>
+                </tr>
+              ))}
               {RECEIVED_METHODS.filter((method) => summary.accountReceivedByMethod[method] > 0).map((method) => (
                 <tr key={`fiado-${method}`}>
                   <Td>Fiado recebido ({PAYMENT_LABEL[method]})</Td>
@@ -441,7 +445,7 @@ function CloseModal({ cash, onClose }: { cash: CashDetail; onClose: () => void }
         {close.error && <ErrorMessage error={close.error} />}
         <dl className="space-y-1 rounded-lg bg-slate-50 px-4 py-3 text-sm">
           <Row label="Troco inicial" value={cash.openingCents} />
-          <Row label="Vendas em dinheiro (já sem troco e devoluções)" value={cash.summary.byMethod.CASH} />
+          <Row label="Vendas em dinheiro (já sem troco e devoluções)" value={cash.summary.byMethod.CASH ?? 0} />
           {cash.summary.accountReceivedByMethod.CASH > 0 && (
             <Row label="Fiado recebido em dinheiro" value={cash.summary.accountReceivedByMethod.CASH} />
           )}

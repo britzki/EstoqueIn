@@ -80,7 +80,9 @@ describe('Registrar venda', () => {
       status: 'COMPLETED',
     });
     // custo: 2 × 12,00 + 0,350 × 10,00 = 27,50
-    expect(res.body.costCents).toBe(2750);
+    expect((await prisma.sale.findUniqueOrThrow({ where: { id: res.body.id } })).costCents).toBe(2750);
+    // O operador não vê o custo na resposta.
+    expect(res.body.costCents).toBeNull();
     expect(res.body.items).toHaveLength(2);
 
     expect(await stockOf(collar.id, s.store.id)).toBe(3);

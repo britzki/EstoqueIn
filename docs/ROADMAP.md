@@ -10,6 +10,8 @@ Decisões já tomadas e o que fica para depois. A ordem dentro de cada seção �
 
 ## Próximos passos
 
+Já feito na versão 1.8: entregas (endereços do cliente, taxa automática, cobrar na entrega, painel com prazo, guia de entrega e acerto com o entregador) e números do negócio visíveis só para administrador e gerente.
+
 Já feito na versão 1.7: estorno de pagamento de fiado, cartão fidelidade, promoções com prazo, kits, contas a pagar e fechamento do mês.
 
 Já feito na versão 1.6: fiado (caderneta digital com limite, pagamentos parciais e cobrança pelo WhatsApp), botões rápidos na tela de venda, pedidos de compra a partir da sugestão e aviso de backup na tela inicial.

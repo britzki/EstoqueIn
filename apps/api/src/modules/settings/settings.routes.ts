@@ -25,6 +25,13 @@ const settingsSchema = z.object({
   scalePrefix: z.string().regex(/^\d{1,2}$/, 'Use 1 ou 2 dígitos'),
   scaleCodeDigits: z.number().int().min(4).max(6),
   scaleValueType: z.enum(['WEIGHT', 'PRICE']),
+  deliveryFeeCents: z.number().int().min(0).max(100_000),
+  deliveryFreeAboveCents: z.number().int().min(0).max(10_000_000),
+  deliveryDeadlineMinutes: z
+    .number()
+    .int()
+    .min(10)
+    .max(24 * 60),
 });
 
 settingsRoutes.get('/', async (_req, res) => {

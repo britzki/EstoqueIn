@@ -74,6 +74,7 @@ model User {
   promotionsCreated         Promotion[]
   billsCreated              Bill[]            @relation("BillCreatedBy")
   billsPaid                 Bill[]            @relation("BillPaidBy")
+  deliveriesCreated         Delivery[]        @relation("DeliveryCreatedBy")
 }
 
 model Supplier {
@@ -322,25 +323,27 @@ enum PaymentMethod {
 
 // Venda no balcão. Não é documento fiscal: é o controle interno que baixa o estoque.
 model Sale {
-  id            String     @id @default(cuid())
-  number        Int        @unique // numeração sequencial exibida na notinha
-  status        SaleStatus @default(COMPLETED)
-  warehouseId   String
-  userId        String
-  customerName  String?
-  customerId    String?
-  cashSessionId String? // caixa aberto no momento da venda
-  notes         String?
-  subtotalCents Int
-  discountCents Int        @default(0)
-  totalCents    Int
-  paidCents     Int // soma dos pagamentos recebidos
-  changeCents   Int        @default(0) // troco (só em dinheiro)
-  costCents     Int // custo médio dos itens no momento da venda (para o lucro)
-  createdAt     DateTime   @default(now())
-  cancelledAt   DateTime?
-  cancelledById String?
-  cancelReason  String?
+  id               String     @id @default(cuid())
+  number           Int        @unique // numeração sequencial exibida na notinha
+  status           SaleStatus @default(COMPLETED)
+  warehouseId      String
+  userId           String
+  customerName     String?
+  customerId       String?
+  cashSessionId    String? // caixa aberto no momento da venda
+  notes            String?
+  subtotalCents    Int
+  discountCents    Int        @default(0)
+  totalCents       Int
+  paidCents        Int // soma dos pagamentos recebidos
+  changeCents      Int        @default(0) // troco (só em dinheiro)
+  // Taxa de entrega, somada ao total (não é produto nem tem custo).
+  deliveryFeeCents Int        @default(0)
+  costCents        Int // custo médio dos itens no momento da venda (para o lucro)
+  createdAt        DateTime   @default(now())
+  cancelledAt      DateTime?
+  cancelledById    String?
+  cancelReason     String?
 
   warehouse   Warehouse       @relation(fields: [warehouseId], references: [id])
   user        User            @relation("SaleUser", fields: [userId], references: [id])
@@ -351,6 +354,7 @@ model Sale {
   payments    SalePayment[]
   movements   StockMovement[]
   returns     SaleReturn[]
+  delivery    Delivery?
 
   @@index([createdAt])
   @@index([status, createdAt])
@@ -398,25 +402,29 @@ model SalePayment {
 
 // Dados da loja (cabeçalho da notinha) e leitura da etiqueta da balança. Registro único (id = 1).
 model StoreSettings {
-  id                 Int      @id @default(1)
-  storeName          String   @default("Minha loja")
-  document           String?
-  address            String?
-  phone              String?
-  receiptFooter      String?  @default("Obrigado pela preferência!")
-  receiptWidth       Int      @default(80) // largura da bobina em mm (58 ou 80)
-  autoPrint          Boolean  @default(true)
+  id                      Int      @id @default(1)
+  storeName               String   @default("Minha loja")
+  document                String?
+  address                 String?
+  phone                   String?
+  receiptFooter           String?  @default("Obrigado pela preferência!")
+  receiptWidth            Int      @default(80) // largura da bobina em mm (58 ou 80)
+  autoPrint               Boolean  @default(true)
   // Permite vender além do saldo registrado (o saldo fica negativo e um alerta pede conferência).
-  allowNegativeStock Boolean  @default(false)
+  allowNegativeStock      Boolean  @default(false)
   // Exige caixa aberto para registrar vendas (necessário para o fechamento de caixa).
-  requireCashSession Boolean  @default(true)
+  requireCashSession      Boolean  @default(true)
   // Troco fixo da gaveta: valor com que o caixa abre e que fica nela ao fechar (o resto é retirado).
-  cashFloatCents     Int      @default(0)
+  cashFloatCents          Int      @default(0)
+  // Entrega: taxa cobrada abaixo de um valor de compra e prazo para entregar.
+  deliveryFeeCents        Int      @default(500)
+  deliveryFreeAboveCents  Int      @default(4000)
+  deliveryDeadlineMinutes Int      @default(120)
   // Etiqueta da balança (EAN-13): prefixo + código do produto + valor (peso em gramas ou preço em centavos).
-  scalePrefix        String   @default("2")
-  scaleCodeDigits    Int      @default(6)
-  scaleValueType     String   @default("WEIGHT") // WEIGHT | PRICE
-  updatedAt          DateTime @updatedAt
+  scalePrefix             String   @default("2")
+  scaleCodeDigits         Int      @default(6)
+  scaleValueType          String   @default("WEIGHT") // WEIGHT | PRICE
+  updatedAt               DateTime @updatedAt
 }
 
 // Registro de alterações: quem mudou o quê e quando (cadastros, preços, usuários, configurações).
@@ -451,8 +459,10 @@ model Customer {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  sales    Sale[]
-  payments CustomerPayment[]
+  sales      Sale[]
+  payments   CustomerPayment[]
+  addresses  CustomerAddress[]
+  deliveries Delivery[]
 
   @@index([name])
 }
@@ -694,4 +704,74 @@ model Bill {
   paidBy        User?          @relation("BillPaidBy", fields: [paidById], references: [id], onDelete: SetNull)
 
   @@index([status, dueDate])
+}
+
+model CustomerAddress {
+  id         String   @id @default(cuid())
+  customerId String
+  label      String? // ex.: "Casa", "Trabalho"
+  street     String
+  number     String
+  complement String?
+  district   String // bairro
+  reference  String? // ponto de referência para o entregador
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+}
+
+// Entregador (ex.: motoboy terceirizado). O valor por entrega serve para o acerto com ele.
+model Courier {
+  id                  String   @id @default(cuid())
+  name                String
+  phone               String?
+  feePerDeliveryCents Int      @default(0)
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+
+  deliveries Delivery[]
+}
+
+enum DeliveryStatus {
+  PENDING // separando
+  OUT // saiu para entrega
+  DELIVERED
+  FAILED // não entregue (cliente ausente, endereço errado...)
+  CANCELLED // venda cancelada
+}
+
+// Entrega de uma venda. O endereço é copiado na hora: mudar o cadastro depois não altera a entrega.
+model Delivery {
+  id                String         @id @default(cuid())
+  number            Int            @unique
+  saleId            String         @unique
+  customerId        String
+  status            DeliveryStatus @default(PENDING)
+  street            String
+  addressNumber     String
+  complement        String?
+  district          String
+  reference         String?
+  phone             String?
+  feeCents          Int
+  // Cobrar na entrega (dinheiro com troco ou cartão na maquininha) ou já pago (ex.: Pix antes).
+  collectOnDelivery Boolean        @default(false)
+  dueAt             DateTime // prazo (agora + prazo padrão, ou o horário agendado)
+  scheduled         Boolean        @default(false)
+  notes             String?
+  courierId         String?
+  outAt             DateTime?
+  finishedAt        DateTime?
+  failReason        String?
+  createdById       String
+  createdAt         DateTime       @default(now())
+
+  sale      Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  customer  Customer @relation(fields: [customerId], references: [id])
+  courier   Courier? @relation(fields: [courierId], references: [id], onDelete: SetNull)
+  createdBy User     @relation("DeliveryCreatedBy", fields: [createdById], references: [id])
+
+  @@index([status, dueAt])
 }

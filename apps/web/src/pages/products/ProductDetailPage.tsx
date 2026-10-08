@@ -77,6 +77,8 @@ export function ProductDetailPage() {
 
   const p = product.data;
   const margin = p.priceCents > 0 ? (p.priceCents - p.costCents) / p.priceCents : 0;
+  // Custo, margem e valor do estoque são só para administrador e gerente.
+  const canSeeCost = can('reports:read') && p.costCents !== null;
   const isBulk = Boolean(p.sourceProduct);
   const hasBulk = p.bulkProducts.length > 0;
 
@@ -157,11 +159,17 @@ export function ProductDetailPage() {
       {p.isKit && p.kit && (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatCard label="Kits disponíveis" value={formatNumber(p.kit.available)} hint="Pelo estoque dos produtos" />
-          <StatCard label="Custo do kit" value={formatMoney(p.kit.costCents)} hint="Soma dos custos médios" />
+          {p.kit.costCents !== null && (
+            <StatCard label="Custo do kit" value={formatMoney(p.kit.costCents)} hint="Soma dos custos médios" />
+          )}
           <StatCard
             label="Preço de venda"
             value={formatMoney(p.priceCents)}
-            hint={`Margem ${formatPercent(p.priceCents > 0 ? (p.priceCents - p.kit.costCents) / p.priceCents : 0)}`}
+            hint={
+              p.kit.costCents !== null
+                ? `Margem ${formatPercent(p.priceCents > 0 ? (p.priceCents - p.kit.costCents) / p.priceCents : 0)}`
+                : undefined
+            }
           />
         </div>
       )}
@@ -172,13 +180,21 @@ export function ProductDetailPage() {
           value={`${formatNumber(p.totalQuantity)} ${p.unit}`}
           hint={`Mínimo padrão: ${formatNumber(p.minStock)}`}
         />
-        <StatCard label="Custo médio" value={formatMoney(p.costCents)} hint="Média ponderada das entradas" />
-        <StatCard label="Preço de venda" value={formatMoney(p.priceCents)} hint={`Margem ${formatPercent(margin)}`} />
+        {canSeeCost && (
+          <StatCard label="Custo médio" value={formatMoney(p.costCents)} hint="Média ponderada das entradas" />
+        )}
         <StatCard
-          label="Valor em estoque"
-          value={formatMoney(Math.round(p.totalQuantity * p.costCents))}
-          hint="Saldo × custo médio"
+          label="Preço de venda"
+          value={formatMoney(p.priceCents)}
+          hint={canSeeCost ? `Margem ${formatPercent(margin)}` : undefined}
         />
+        {canSeeCost && (
+          <StatCard
+            label="Valor em estoque"
+            value={formatMoney(Math.round(p.totalQuantity * p.costCents))}
+            hint="Saldo × custo médio"
+          />
+        )}
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">

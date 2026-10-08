@@ -3,12 +3,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import { desktop } from '../lib/desktop';
 import { useStoreSettings } from '../lib/hooks';
+import { formatDeadline } from '../lib/delivery';
 import { centsToInput, parseMoneyInput } from '../lib/format';
 import { useToast } from '../lib/toast';
 import type { SaleDetail, StoreSettings } from '../lib/types';
 import { Receipt } from '../components/Receipt';
 import { ExternalBackupCard } from './settings/ExternalBackupCard';
 import { LoyaltyCard } from './settings/LoyaltyCard';
+import { CouriersCard } from './settings/CouriersCard';
 import {
   Button,
   Card,
@@ -240,6 +242,62 @@ export function SettingsPage() {
               />
             </div>
           </Card>
+
+          <Card>
+            <CardHeader
+              title="Entregas"
+              description="Taxa somada sozinha na venda para entrega (dá para não cobrar em uma venda específica)."
+            />
+            <div className="grid gap-4 p-5 sm:grid-cols-3">
+              <Field label="Taxa de entrega (R$)" error={errors.deliveryFeeCents?.[0]}>
+                {(id) => (
+                  <Input
+                    id={id}
+                    defaultValue={centsToInput(form.deliveryFeeCents)}
+                    onChange={(e) => set('deliveryFeeCents', parseMoneyInput(e.target.value) ?? 0)}
+                    inputMode="decimal"
+                    placeholder="0,00"
+                  />
+                )}
+              </Field>
+              <Field
+                label="Grátis a partir de (R$)"
+                hint="Compras desse valor para cima não pagam a taxa."
+                error={errors.deliveryFreeAboveCents?.[0]}
+              >
+                {(id) => (
+                  <Input
+                    id={id}
+                    defaultValue={centsToInput(form.deliveryFreeAboveCents)}
+                    onChange={(e) => set('deliveryFreeAboveCents', parseMoneyInput(e.target.value) ?? 0)}
+                    inputMode="decimal"
+                    placeholder="0,00"
+                  />
+                )}
+              </Field>
+              <Field
+                label="Prazo para entregar"
+                hint="Passou do prazo, a entrega fica vermelha no painel."
+                error={errors.deliveryDeadlineMinutes?.[0]}
+              >
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={form.deliveryDeadlineMinutes}
+                    onChange={(e) => set('deliveryDeadlineMinutes', Number(e.target.value))}
+                  >
+                    {[30, 45, 60, 90, 120, 180, 240].map((minutes) => (
+                      <option key={minutes} value={minutes}>
+                        {formatDeadline(minutes)}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            </div>
+          </Card>
+
+          <CouriersCard />
 
           <LoyaltyCard />
 

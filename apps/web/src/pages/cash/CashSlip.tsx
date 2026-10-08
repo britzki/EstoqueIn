@@ -40,15 +40,17 @@ export function CashSlip({ cash, settings }: { cash: CashDetail; settings: Store
           <span>{summary.returnsCount}</span>
         </div>
       )}
-      <div className={`${row} font-bold`}>
-        <span>Faturamento</span>
-        <span>{money(summary.revenueCents)}</span>
-      </div>
+      {summary.revenueCents !== null && (
+        <div className={`${row} font-bold`}>
+          <span>Faturamento</span>
+          <span>{money(summary.revenueCents)}</span>
+        </div>
+      )}
       {rule}
       {METHODS.filter((method) => summary.byMethod[method]).map((method) => (
         <div key={method} className={row}>
           <span>{PAYMENT_LABEL[method]}</span>
-          <span>{money(summary.byMethod[method])}</span>
+          <span>{money(summary.byMethod[method] ?? 0)}</span>
         </div>
       ))}
       {rule}

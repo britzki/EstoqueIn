@@ -81,7 +81,7 @@ describe('Caixa', () => {
     await movement('DEPOSIT', 1000, 'Reforço de troco').expect(201);
     expect((await movement('WITHDRAWAL', 100, '')).status).toBe(400);
 
-    const { body: current } = await api().get(`/api/cash/current?warehouseId=${s.store.id}`).set(s.operator.auth);
+    const { body: current } = await api().get(`/api/cash/current?warehouseId=${s.store.id}`).set(s.admin.auth);
     // 100,00 + 30,00 − 25,00 + 10,00 = 115,00
     expect(current.summary).toMatchObject({
       salesCount: 2,
@@ -261,7 +261,7 @@ describe('Devolução parcial', () => {
     expect(detail.body.returns).toHaveLength(1);
 
     // O caixa desconta a devolução em dinheiro: 100,00 + 117,00 − 36,00
-    const cash = await api().get(`/api/cash/current?warehouseId=${s.store.id}`).set(s.operator.auth);
+    const cash = await api().get(`/api/cash/current?warehouseId=${s.store.id}`).set(s.admin.auth);
     expect(cash.body.summary).toMatchObject({ expectedCashCents: 18100, revenueCents: 8100, returnsCount: 1 });
   });
 

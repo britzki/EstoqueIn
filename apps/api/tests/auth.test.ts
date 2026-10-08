@@ -49,15 +49,16 @@ describe('Permissões por perfil', () => {
     expect(move.status).toBe(201);
   });
 
-  it('perfil somente leitura vê relatórios, mas não movimenta', async () => {
+  it('perfil somente leitura não movimenta nem vê relatórios', async () => {
     const move = await api()
       .post('/api/stock/entries')
       .set(s.viewer.auth)
       .send({ productId: s.product.id, warehouseId: s.depot.id, quantity: 1 });
     expect(move.status).toBe(403);
 
-    expect((await api().get('/api/reports/stock-position').set(s.viewer.auth)).status).toBe(200);
+    expect((await api().get('/api/reports/stock-position').set(s.viewer.auth)).status).toBe(403);
     expect((await api().get('/api/reports/stock-position').set(s.operator.auth)).status).toBe(403);
+    expect((await api().get('/api/reports/stock-position').set(s.admin.auth)).status).toBe(200);
   });
 
   it('apenas administradores gerenciam usuários', async () => {

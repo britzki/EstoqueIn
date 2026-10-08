@@ -7,13 +7,19 @@ import { can } from '../../auth/permissions.js';
 import { getSalesReport } from '../sales/sales.report.js';
 import { getPurchaseSuggestion, getStaleProducts } from './purchasing.report.js';
 import { getMonthlyReport } from './monthly.report.js';
+import { canSeeFinancials } from '../../lib/visibility.js';
 import { getAbcCurve, getDashboard, getMovementSummary, getStockPosition } from './reports.service.js';
 
 export const dashboardRoutes = Router();
 export const reportsRoutes = Router();
 
-dashboardRoutes.get('/', async (_req, res) => {
-  res.json(await getDashboard());
+dashboardRoutes.get('/', async (req, res) => {
+  const dashboard = await getDashboard();
+  if (canSeeFinancials(req)) {
+    res.json(dashboard);
+    return;
+  }
+  res.json({ ...dashboard, totals: { ...dashboard.totals, stockValueCents: null, salesToday: null } });
 });
 
 reportsRoutes.use(requirePermission('reports:read'));

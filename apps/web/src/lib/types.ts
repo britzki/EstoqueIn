@@ -268,6 +268,8 @@ export interface Sale {
   customerId: string | null;
   subtotalCents: number;
   discountCents: number;
+  /** Taxa de entrega somada ao total. */
+  deliveryFeeCents?: number;
   totalCents: number;
   paidCents: number;
   changeCents: number;
@@ -284,6 +286,7 @@ export interface SaleDetail extends Sale {
   cancelledBy: Ref | null;
   customer: (Ref & { phone: string | null }) | null;
   returns: SaleReturn[];
+  delivery?: Delivery | null;
   alertsOpened?: number;
   /** Fiado em aberto do cliente depois desta venda (só na resposta de venda fiada). */
   customerBalanceCents?: number;
@@ -317,14 +320,19 @@ export interface StoreSettings {
   allowNegativeStock: boolean;
   requireCashSession: boolean;
   cashFloatCents: number;
+  /** Entrega: taxa cobrada quando os produtos somam menos que deliveryFreeAboveCents. */
+  deliveryFeeCents: number;
+  deliveryFreeAboveCents: number;
+  deliveryDeadlineMinutes: number;
 }
 
 export interface CashSummary {
   salesCount: number;
   cancelledCount: number;
   returnsCount: number;
-  revenueCents: number;
-  byMethod: Record<PaymentMethod, number>;
+  /** null e só o dinheiro em byMethod para quem não vê números do negócio. */
+  revenueCents: number | null;
+  byMethod: Partial<Record<PaymentMethod, number>>;
   withdrawalsCents: number;
   depositsCents: number;
   expectedCashCents: number;
@@ -412,7 +420,8 @@ export interface PurchaseOrder {
   notes: string | null;
   createdAt: string;
   closedAt: string | null;
-  totalCents: number;
+  /** null para quem não vê números do negócio. */
+  totalCents: number | null;
   supplier: { id: string; name: string; phone: string | null; email: string | null; contactName: string | null } | null;
   createdBy: Ref;
   items: Array<{
@@ -421,7 +430,7 @@ export interface PurchaseOrder {
     description: string;
     unit: string;
     quantity: number;
-    unitCostCents: number;
+    unitCostCents: number | null;
   }>;
 }
 
@@ -518,4 +527,77 @@ export interface BillsSummary {
   overdue: { count: number; totalCents: number };
   upcoming: { count: number; totalCents: number };
   bills: Array<Bill & { supplier: { name: string } | null }>;
+}
+
+export interface CustomerAddress {
+  id: string;
+  customerId: string;
+  label: string | null;
+  street: string;
+  number: string;
+  complement: string | null;
+  district: string;
+  reference: string | null;
+}
+
+export interface Courier {
+  id: string;
+  name: string;
+  phone: string | null;
+  feePerDeliveryCents: number;
+  active: boolean;
+}
+
+export type DeliveryStatus = 'PENDING' | 'OUT' | 'DELIVERED' | 'FAILED' | 'CANCELLED';
+
+export interface Delivery {
+  id: string;
+  number: number;
+  saleId: string;
+  status: DeliveryStatus;
+  street: string;
+  addressNumber: string;
+  complement: string | null;
+  district: string;
+  reference: string | null;
+  phone: string | null;
+  feeCents: number;
+  /** Cobrar na entrega; falso = já pago (ex.: Pix antes). */
+  collectOnDelivery: boolean;
+  dueAt: string;
+  scheduled: boolean;
+  notes: string | null;
+  outAt: string | null;
+  finishedAt: string | null;
+  failReason: string | null;
+  createdAt: string;
+  courier: (Ref & { phone?: string | null }) | null;
+}
+
+/** Entrega no painel, com o resumo da venda (sem custo). */
+export interface DeliveryDetail extends Delivery {
+  customer: Ref & { phone: string | null };
+  createdBy: Ref;
+  sale: {
+    id: string;
+    number: number;
+    status: 'COMPLETED' | 'CANCELLED';
+    subtotalCents: number;
+    discountCents: number;
+    deliveryFeeCents: number;
+    totalCents: number;
+    paidCents: number;
+    changeCents: number;
+    createdAt: string;
+    items: Array<{ id: string; description: string; quantity: number; unit: string; totalCents: number }>;
+    payments: Array<{ method: PaymentMethod; amountCents: number }>;
+  };
+}
+
+export interface CourierReportRow {
+  courier: { id: string; name: string; feePerDeliveryCents: number } | null;
+  deliveries: number;
+  feesChargedCents: number;
+  collectedCents: number;
+  toPayCents: number;
 }

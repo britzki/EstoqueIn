@@ -11,6 +11,7 @@ import { assertAccountSale, getCustomerBalance } from '../customers/account.js';
 import { activePromotions, priceLine } from '../promotions/pricing.js';
 import { getCustomerLoyalty } from '../loyalty/loyalty.service.js';
 import { kitAvailability } from '../products/kits.js';
+import { createDelivery, deliveryFee, saleDeliverySchema } from '../deliveries/deliveries.js';
 
 /** ACCOUNT = fiado: o valor fica na conta do cliente e é pago depois. */
 export const paymentMethods = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER', 'ACCOUNT'] as const;
@@ -33,6 +34,8 @@ export const saleSchema = z.object({
   customerName: optionalText(120),
   customerId: optionalId,
   notes: optionalText(255),
+  /** Venda para entregar: endereço, taxa e se o entregador cobra na entrega. */
+  delivery: saleDeliverySchema.optional(),
 });
 
 export type SaleInput = z.infer<typeof saleSchema>;
@@ -44,6 +47,7 @@ const saleInclude = {
   user: { select: { id: true, name: true } },
   cancelledBy: { select: { id: true, name: true } },
   customer: { select: { id: true, name: true, phone: true } },
+  delivery: { include: { courier: { select: { id: true, name: true } } } },
   returns: {
     include: { items: true, user: { select: { id: true, name: true } } },
     orderBy: { createdAt: 'asc' as const },
@@ -107,6 +111,12 @@ export async function createSale(input: SaleInput, userId: string) {
       }
       const customer = input.customerId ? await tx.customer.findUnique({ where: { id: input.customerId } }) : null;
       if (input.customerId && !customer) throw notFound('Cliente');
+      if (input.delivery && !customer) {
+        throw unprocessable(
+          'Para entregar, escolha o cliente (o endereço fica no cadastro dele)',
+          'DELIVERY_NEEDS_CUSTOMER',
+        );
+      }
 
       const productIds = input.items.map((item) => item.productId);
       const [products, promotions] = await Promise.all([
@@ -193,7 +203,11 @@ export async function createSale(input: SaleInput, userId: string) {
 
       const subtotalCents = lines.reduce((sum, line) => sum + line.totalCents, 0);
       if (input.discountCents > subtotalCents) throw unprocessable('O desconto não pode ser maior que o total');
-      const totalCents = subtotalCents - input.discountCents;
+      // Taxa de entrega: pela regra da loja, sobre o valor dos produtos já com desconto.
+      const deliveryFeeCents = input.delivery
+        ? deliveryFee(subtotalCents - input.discountCents, settings, input.delivery.waiveFee)
+        : 0;
+      const totalCents = subtotalCents - input.discountCents + deliveryFeeCents;
 
       if (totalCents > 0 && input.payments.length === 0) throw badRequest('Informe a forma de pagamento');
       const paidCents = input.payments.reduce((sum, payment) => sum + payment.amountCents, 0);
@@ -226,6 +240,7 @@ export async function createSale(input: SaleInput, userId: string) {
           notes: input.notes ?? null,
           subtotalCents,
           discountCents: input.discountCents,
+          deliveryFeeCents,
           totalCents,
           paidCents,
           changeCents,
@@ -259,6 +274,16 @@ export async function createSale(input: SaleInput, userId: string) {
         },
         include: saleInclude,
       });
+
+      const delivery = input.delivery
+        ? await createDelivery(tx, input.delivery, {
+            saleId: sale.id,
+            customer: customer!,
+            feeCents: deliveryFeeCents,
+            deadlineMinutes: settings.deliveryDeadlineMinutes,
+            userId,
+          })
+        : null;
 
       const alerts: AlertChange[] = [];
       for (const line of lines) {
@@ -295,7 +320,11 @@ export async function createSale(input: SaleInput, userId: string) {
 
       // Na notinha de venda fiada sai o total que o cliente ficou devendo.
       const customerBalanceCents = accountCents > 0 && customer ? await getCustomerBalance(customer.id, tx) : undefined;
-      return { sale, alerts, customerBalanceCents };
+      return {
+        sale: delivery ? { ...sale, delivery: { ...delivery, courier: null } } : sale,
+        alerts,
+        customerBalanceCents,
+      };
     },
     { timeout: 30_000 },
   );
@@ -336,6 +365,11 @@ export async function cancelSale(saleId: string, reason: string, userId: string)
       }
     }
 
+    // Venda cancelada não sai mais para entrega.
+    await tx.delivery.updateMany({
+      where: { saleId: sale.id, status: { in: ['PENDING', 'OUT', 'FAILED'] } },
+      data: { status: 'CANCELLED', finishedAt: new Date() },
+    });
     const updated = await tx.sale.update({
       where: { id: sale.id },
       data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledById: userId, cancelReason: reason },
@@ -459,7 +493,8 @@ export async function createReturn(saleId: string, input: ReturnInput, userId: s
     }
 
     const remaining = await returnableQuantities(sale.id, tx);
-    const discountFactor = sale.subtotalCents > 0 ? sale.totalCents / sale.subtotalCents : 1;
+    // A taxa de entrega não é devolvida junto com os itens.
+    const discountFactor = sale.subtotalCents > 0 ? (sale.totalCents - sale.deliveryFeeCents) / sale.subtotalCents : 1;
 
     const lines = input.items.map((line) => {
       const item = sale.items.find((saleItem) => saleItem.id === line.saleItemId);

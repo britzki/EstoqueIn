@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { canSeeFinancials } from '../../lib/visibility.js';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { currentUser, requirePermission } from '../../middleware/auth.js';
@@ -81,7 +82,9 @@ stockRoutes.get('/movements', async (req, res) => {
       { header: 'Estoque', value: (m) => m.warehouse.name },
       { header: 'Quantidade', value: (m) => m.quantity },
       { header: 'Saldo após', value: (m) => m.balanceAfter },
-      { header: 'Custo unitário', value: (m) => centsToDecimal(m.unitCostCents) },
+      ...(canSeeFinancials(req)
+        ? [{ header: 'Custo unitário', value: (m: (typeof rows)[number]) => centsToDecimal(m.unitCostCents) }]
+        : []),
       { header: 'Fornecedor', value: (m) => m.supplier?.name },
       { header: 'Documento', value: (m) => m.documentRef },
       { header: 'Motivo', value: (m) => m.reason },

@@ -30,6 +30,7 @@ Em **Gestão → Usuários**:
   - **Operador:** vende, dá entrada e saída, conta inventário.
   - **Gerente:** também cadastra produtos, altera preços, cancela vendas, vê relatórios e cuida das contas a pagar.
   - **Administrador:** tudo, inclusive usuários.
+  - Faturamento, lucro, custos, valor do estoque e relatórios só aparecem para **Administrador** e **Gerente**. O operador vê só o que precisa para vender e conferir a gaveta.
 - [ ] A senha criada pelo administrador é temporária: o funcionário define a própria no primeiro acesso.
 
 ## 4. Trazer os dados do sistema antigo
@@ -48,6 +49,7 @@ Depois:
 - [ ] Marcar como **Botão rápido na tela de venda** os produtos que mais saem (ração a granel, por exemplo).
 - [ ] Se a loja quiser, criar o **cartão fidelidade** em Configurações (ex.: a cada 10 sacos de ração, 1 petisco de brinde).
 - [ ] Lançar em **Contas a pagar** as contas fixas do mês (aluguel, luz, internet) marcando "Conta mensal".
+- [ ] **Entregas:** em Configurações → Entregas, conferir a taxa, o valor para entrega grátis e o prazo. Cadastrar o entregador (ex.: o motoboy) com o valor que a loja paga por entrega.
 - [ ] Kits vendidos na loja: cadastrar como produto, marcar **É um kit** e escolher os itens na página do produto.
 - [ ] **Fiado do caderno:** cadastrar em Clientes quem está devendo e preencher **Fiado anterior, do caderno** com o valor que cada um deve hoje. Definir o limite de fiado de quem precisar.
 - [ ] Preencher o **telefone (WhatsApp) dos fornecedores**, para enviar os pedidos de compra direto.
@@ -70,6 +72,7 @@ O programa faz backup automático todo dia e antes de cada atualização, mas **
 - [ ] **Devolução:** em **Vendas**, abrir a venda e usar **Devolver itens**. Cancelar só quando a venda inteira foi um erro.
 - [ ] **Clientes → Hora de recomprar:** quem costuma levar ração e está perto de acabar, com o botão para avisar pelo WhatsApp.
 - [ ] **Fiado:** vender no fiado (escolher o cliente e a forma Fiado), receber pagamento em Clientes e usar o botão Cobrar.
+- [ ] **Entregas:** na venda, marcar "É para entregar", escolher o endereço e se já está pago ou se cobra na entrega. Em **Entregas**, usar Saiu (com o entregador), Avisar (WhatsApp) e Entregue. Imprimir a guia para ir junto com o pacote.
 - [ ] **Pedidos de compra:** gerar o pedido pela sugestão de compra e marcar como recebido quando chegar.
 - [ ] **Promoções:** criar com data de início e fim; o caixa cobra sozinho.
 - [ ] **Contas a pagar:** pagar pela tela (com dinheiro da gaveta, se for o caso) e acompanhar o aviso na tela inicial.

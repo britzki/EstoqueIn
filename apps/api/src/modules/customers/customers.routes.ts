@@ -12,6 +12,7 @@ import { can } from '../../auth/permissions.js';
 import { currentUser, requirePermission } from '../../middleware/auth.js';
 import { getRepurchaseReminders } from './repurchase.js';
 import { getCustomerLoyalty } from '../loyalty/loyalty.service.js';
+import { addressSchema } from '../deliveries/deliveries.js';
 import {
   accountPaymentSchema,
   cancelAccountPayment,
@@ -94,8 +95,12 @@ customersRoutes.get('/:id', async (req, res) => {
     },
   });
   if (!customer) throw notFound('Cliente');
+  const addresses = await prisma.customerAddress.findMany({
+    where: { customerId: customer.id },
+    orderBy: { createdAt: 'asc' },
+  });
   const reminders = (await getRepurchaseReminders(365)).filter((reminder) => reminder.customer.id === customer.id);
-  res.json({ ...customer, reminders, balanceCents: await getCustomerBalance(customer.id) });
+  res.json({ ...customer, addresses, reminders, balanceCents: await getCustomerBalance(customer.id) });
 });
 
 /** Cartão fidelidade do cliente: progresso e brindes disponíveis. */
@@ -183,4 +188,40 @@ customersRoutes.patch('/:id', requirePermission('sales:create'), async (req, res
     changes: diff(before, data, ['name', 'phone', 'notes', 'creditLimitCents', 'openingBalanceCents', 'active']),
   });
   res.json(customer);
+});
+
+/** Endereços de entrega do cliente (casa, trabalho...). */
+customersRoutes.get('/:id/addresses', async (req, res) => {
+  res.json(
+    await prisma.customerAddress.findMany({ where: { customerId: param(req, 'id') }, orderBy: { createdAt: 'asc' } }),
+  );
+});
+
+customersRoutes.post('/:id/addresses', requirePermission('sales:create'), async (req, res) => {
+  const customer = await prisma.customer.findUnique({ where: { id: param(req, 'id') } });
+  if (!customer) throw notFound('Cliente');
+  const address = await prisma.customerAddress.create({
+    data: { ...addressSchema.parse(req.body), customerId: customer.id },
+  });
+  res.status(201).json(address);
+});
+
+const findAddress = async (req: Parameters<typeof param>[0]) => {
+  const address = await prisma.customerAddress.findUnique({ where: { id: param(req, 'addressId') } });
+  if (!address || address.customerId !== param(req, 'id')) throw notFound('Endereço');
+  return address;
+};
+
+customersRoutes.patch('/:id/addresses/:addressId', requirePermission('sales:create'), async (req, res) => {
+  const address = await findAddress(req);
+  res.json(
+    await prisma.customerAddress.update({ where: { id: address.id }, data: addressSchema.partial().parse(req.body) }),
+  );
+});
+
+/** As entregas já feitas guardam uma cópia do endereço: apagar aqui não muda o histórico. */
+customersRoutes.delete('/:id/addresses/:addressId', requirePermission('sales:create'), async (req, res) => {
+  const address = await findAddress(req);
+  await prisma.customerAddress.delete({ where: { id: address.id } });
+  res.status(204).end();
 });

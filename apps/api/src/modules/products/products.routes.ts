@@ -14,6 +14,7 @@ import { evaluateStockAlert, publishAlertChanges } from '../alerts/alerts.servic
 import { decodeCsv, IMPORT_TEMPLATE, importProducts } from './products.import.js';
 import { minQuantitySchema, productFiltersSchema, productSchema, productUpdateSchema } from './products.schemas.js';
 import { categoriesRoutes } from './categories.js';
+import { canSeeFinancials, withoutCost } from '../../lib/visibility.js';
 import { kitAvailability, kitComponentSelect, kitCostCents, kitSchema, setKitItems } from './kits.js';
 import { sendCsv } from '../../lib/csv.js';
 
@@ -91,7 +92,7 @@ productsRoutes.get('/', async (req, res) => {
   ]);
 
   const data = products.map(({ stockLevels, _count, ...product }) => ({
-    ...product,
+    ...withoutCost(req, product),
     totalQuantity: roundQty(stockLevels.reduce((sum, level) => sum + level.quantity, 0)),
     openAlerts: _count.alerts,
   }));
@@ -139,7 +140,7 @@ productsRoutes.get('/by-barcode/:code', async (req, res) => {
     include: { stockLevels: { include: { warehouse: { select: { id: true, name: true } } } } },
   });
   if (!product) throw notFound('Produto com este código de barras');
-  res.json(product);
+  res.json(withoutCost(req, product));
 });
 
 productsRoutes.get('/:id', async (req, res) => {
@@ -174,10 +175,17 @@ productsRoutes.get('/:id', async (req, res) => {
   const kit = product.isKit
     ? {
         available: (await kitAvailability([product.id])).get(product.id) ?? 0,
-        costCents: kitCostCents(product.kitItems),
+        costCents: canSeeFinancials(req) ? kitCostCents(product.kitItems) : null,
       }
     : null;
-  res.json({ ...rest, stock, kit, totalQuantity: roundQty(stockLevels.reduce((sum, l) => sum + l.quantity, 0)) });
+  res.json({
+    ...withoutCost(req, rest),
+    // Sem permissão, os componentes do kit também vêm sem custo.
+    kitItems: rest.kitItems.map((item) => ({ ...item, product: withoutCost(req, item.product) })),
+    stock,
+    kit,
+    totalQuantity: roundQty(stockLevels.reduce((sum, l) => sum + l.quantity, 0)),
+  });
 });
 
 /** Regras do vínculo "granel de um produto fechado" e da troca para unidades inteiras. */

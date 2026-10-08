@@ -197,7 +197,7 @@ export function OrderModal({ id, onClose }: { id: string; onClose: () => void })
             description: `Pedido nº ${order.number}${order.supplier ? ` – ${order.supplier.name}` : ''}`,
             supplierId: order.supplier?.id,
             purchaseOrderId: order.id,
-            amountCents: order.totalCents,
+            amountCents: order.totalCents ?? 0,
           }}
           onClose={() => setBilling(false)}
         />
@@ -241,10 +241,12 @@ export function OrderModal({ id, onClose }: { id: string; onClose: () => void })
               ))}
             </tbody>
           </Table>
-          <p className="text-right text-sm text-slate-600">
-            Total estimado (pelo último custo):{' '}
-            <strong className="text-slate-900">{formatMoney(order.totalCents)}</strong>
-          </p>
+          {order.totalCents !== null && (
+            <p className="text-right text-sm text-slate-600">
+              Total estimado (pelo último custo):{' '}
+              <strong className="text-slate-900">{formatMoney(order.totalCents)}</strong>
+            </p>
+          )}
           {order.notes && <p className="text-sm text-slate-600">Observações: {order.notes}</p>}
           {order.status === 'OPEN' && (
             <p className="text-xs text-slate-500">
