@@ -8,16 +8,28 @@ interface Filters {
   warehouseId?: string;
 }
 
-/** Vendas do período: faturamento, lucro (pelo custo médio na hora da venda), formas de pagamento e produtos. */
+/**
+ * Vendas do período: faturamento, lucro (pelo custo médio na hora da venda), formas de pagamento e produtos.
+ * Devoluções feitas no período são descontadas (no dia, na forma de pagamento e no produto em que aconteceram),
+ * do mesmo jeito que no fechamento do caixa e no fechamento do mês.
+ */
 export async function getSalesReport({ from, to, warehouseId }: Filters) {
   const where = { createdAt: { gte: from, lte: to }, warehouseId };
-  const [sales, cancelled] = await Promise.all([
+  const [sales, cancelled, returns] = await Promise.all([
     prisma.sale.findMany({
       where: { ...where, status: 'COMPLETED' },
       include: { items: true, payments: true, user: { select: { name: true } } },
       orderBy: { number: 'asc' },
     }),
     prisma.sale.count({ where: { ...where, status: 'CANCELLED' } }),
+    prisma.saleReturn.findMany({
+      where: { createdAt: { gte: from, lte: to }, ...(warehouseId && { sale: { warehouseId } }) },
+      include: {
+        items: {
+          include: { saleItem: { select: { productId: true, description: true, unit: true, unitCostCents: true } } },
+        },
+      },
+    }),
   ]);
 
   const byPayment: Record<string, number> = {};
@@ -63,13 +75,41 @@ export async function getSalesReport({ from, to, warehouseId }: Filters) {
     }
   }
 
-  const revenueCents = sales.reduce((sum, sale) => sum + sale.totalCents, 0);
-  const costCents = sales.reduce((sum, sale) => sum + sale.costCents, 0);
+  for (const saleReturn of returns) {
+    byPayment[saleReturn.refundMethod] = (byPayment[saleReturn.refundMethod] ?? 0) - saleReturn.refundCents;
+    const key = dayKey(saleReturn.createdAt);
+    const day = byDay.get(key) ?? { date: key, sales: 0, revenueCents: 0, profitCents: 0 };
+    day.revenueCents -= saleReturn.refundCents;
+    day.profitCents -= saleReturn.refundCents - saleReturn.costCents;
+    byDay.set(key, day);
+    for (const item of saleReturn.items) {
+      const { productId, description, unit, unitCostCents } = item.saleItem;
+      const row = byProduct.get(productId) ?? {
+        productId,
+        name: description,
+        unit,
+        quantity: 0,
+        revenueCents: 0,
+        costCents: 0,
+      };
+      row.quantity = roundQty(row.quantity - item.quantity);
+      row.revenueCents -= item.refundCents;
+      row.costCents -= Math.round(item.quantity * unitCostCents);
+      byProduct.set(productId, row);
+    }
+  }
+
+  const refundsCents = returns.reduce((sum, r) => sum + r.refundCents, 0);
+  const revenueCents = sales.reduce((sum, sale) => sum + sale.totalCents, 0) - refundsCents;
+  const costCents =
+    sales.reduce((sum, sale) => sum + sale.costCents, 0) - returns.reduce((sum, r) => sum + r.costCents, 0);
 
   return {
     totals: {
       sales: sales.length,
       cancelled,
+      returns: returns.length,
+      refundsCents,
       revenueCents,
       discountCents: sales.reduce((sum, sale) => sum + sale.discountCents, 0),
       costCents,

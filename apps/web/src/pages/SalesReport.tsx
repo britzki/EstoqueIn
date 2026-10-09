@@ -9,6 +9,9 @@ interface SalesReportData {
   totals: {
     sales: number;
     cancelled: number;
+    /** Devoluções do período, já descontadas do faturamento e do lucro. */
+    returns: number;
+    refundsCents: number;
     revenueCents: number;
     discountCents: number;
     costCents: number;
@@ -51,7 +54,7 @@ export function SalesReport() {
             <StatCard
               label="Faturamento"
               value={formatMoney(report.data.totals.revenueCents)}
-              hint={`${report.data.totals.sales} vendas${report.data.totals.cancelled ? ` · ${report.data.totals.cancelled} cancelada(s)` : ''}`}
+              hint={`${report.data.totals.sales} vendas${report.data.totals.cancelled ? ` · ${report.data.totals.cancelled} cancelada(s)` : ''}${report.data.totals.returns ? ` · menos ${formatMoney(report.data.totals.refundsCents)} em devoluções` : ''}`}
             />
             <StatCard
               label="Lucro bruto"

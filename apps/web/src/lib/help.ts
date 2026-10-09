@@ -223,6 +223,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       '2. Clique em Cancelar venda e escreva o motivo.',
       'Os itens voltam ao estoque e a venda continua no histórico, marcada como cancelada. Só gerente ou administrador pode cancelar.',
       'Se o cliente devolveu só parte da compra, use Devolver itens em vez de cancelar.',
+      'Venda paga em dinheiro num caixa que já foi fechado não pode ser cancelada (o dinheiro já foi conferido): use Devolver itens, que registra a saída no caixa de hoje.',
     ],
     keywords: ['cancelar', 'cancelamento', 'estornar', 'desfazer', 'errei', 'apagar venda', 'excluir venda'],
     routes: ['/sales'],

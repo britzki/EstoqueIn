@@ -11,52 +11,38 @@ import { getStockPosition } from './reports.service.js';
  */
 export async function getMonthlyReport({ from, to }: { from: Date; to: Date }) {
   const period = { gte: from, lte: to };
-  const [
-    sales,
-    returns,
-    accountSold,
-    accountReceived,
-    debtors,
-    billsPaid,
-    billsOpen,
-    cashSessions,
-    stock,
-    stale,
-    orders,
-  ] = await Promise.all([
-    getSalesReport({ from, to }),
-    prisma.saleReturn.findMany({ where: { createdAt: period }, select: { refundCents: true, costCents: true } }),
-    prisma.salePayment.aggregate({
-      where: { method: 'ACCOUNT', sale: { status: 'COMPLETED', createdAt: period } },
-      _sum: { amountCents: true },
-    }),
-    prisma.customerPayment.aggregate({
-      where: { createdAt: period, cancelledAt: null },
-      _sum: { amountCents: true },
-    }),
-    listDebtors(),
-    prisma.bill.findMany({
-      where: { status: 'PAID', paidAt: period },
-      select: { description: true, paidAmountCents: true, supplier: { select: { name: true } } },
-      orderBy: { paidAmountCents: 'desc' },
-    }),
-    prisma.bill.aggregate({ where: { status: 'OPEN' }, _sum: { amountCents: true }, _count: { _all: true } }),
-    prisma.cashSession.findMany({
-      where: { status: 'CLOSED', closedAt: period },
-      select: { expectedCents: true, countedCents: true },
-    }),
-    getStockPosition({}),
-    getStaleProducts({ days: 60 }),
-    prisma.purchaseOrder.findMany({
-      where: { createdAt: period, status: { not: 'CANCELLED' } },
-      select: { items: { select: { quantity: true, unitCostCents: true } } },
-    }),
-  ]);
+  const [sales, accountSold, accountReceived, debtors, billsPaid, billsOpen, cashSessions, stock, stale, orders] =
+    await Promise.all([
+      getSalesReport({ from, to }),
+      prisma.salePayment.aggregate({
+        where: { method: 'ACCOUNT', sale: { status: 'COMPLETED', createdAt: period } },
+        _sum: { amountCents: true },
+      }),
+      prisma.customerPayment.aggregate({
+        where: { createdAt: period, cancelledAt: null },
+        _sum: { amountCents: true },
+      }),
+      listDebtors(),
+      prisma.bill.findMany({
+        where: { status: 'PAID', paidAt: period },
+        select: { description: true, paidAmountCents: true, supplier: { select: { name: true } } },
+        orderBy: { paidAmountCents: 'desc' },
+      }),
+      prisma.bill.aggregate({ where: { status: 'OPEN' }, _sum: { amountCents: true }, _count: { _all: true } }),
+      prisma.cashSession.findMany({
+        where: { status: 'CLOSED', closedAt: period },
+        select: { expectedCents: true, countedCents: true },
+      }),
+      getStockPosition({}),
+      getStaleProducts({ days: 60 }),
+      prisma.purchaseOrder.findMany({
+        where: { createdAt: period, status: { not: 'CANCELLED' } },
+        select: { items: { select: { quantity: true, unitCostCents: true } } },
+      }),
+    ]);
 
-  const refundsCents = returns.reduce((sum, r) => sum + r.refundCents, 0);
-  const returnedCostCents = returns.reduce((sum, r) => sum + r.costCents, 0);
-  const revenueCents = sales.totals.revenueCents - refundsCents;
-  const grossProfitCents = sales.totals.profitCents - (refundsCents - returnedCostCents);
+  // O relatório de vendas já desconta as devoluções do período.
+  const { refundsCents, revenueCents, profitCents: grossProfitCents } = sales.totals;
   const expensesCents = billsPaid.reduce((sum, bill) => sum + (bill.paidAmountCents ?? 0), 0);
   const cashDifferences = cashSessions
     .filter((session) => session.countedCents !== null && session.expectedCents !== null)
@@ -67,7 +53,7 @@ export async function getMonthlyReport({ from, to }: { from: Date; to: Date }) {
     sales: {
       count: sales.totals.sales,
       cancelled: sales.totals.cancelled,
-      returns: returns.length,
+      returns: sales.totals.returns,
       revenueCents,
       refundsCents,
       discountCents: sales.totals.discountCents,

@@ -143,3 +143,48 @@ describe('NF-e', () => {
     expect(res.body.error.message).toContain('DOCTYPE');
   });
 });
+
+describe('Vendas, devoluções e caixa fechado', () => {
+  const sell = (method: string, amountCents: number) =>
+    api()
+      .post('/api/sales')
+      .set(s.operator.auth)
+      .send({
+        warehouseId: s.store.id,
+        items: [{ productId: s.product.id, quantity: 2 }],
+        payments: [{ method, amountCents }],
+      })
+      .expect(201);
+
+  it('relatório de vendas desconta as devoluções do período, como o fechamento do mês', async () => {
+    const sale = await sell('PIX', 4000);
+    await api()
+      .post(`/api/sales/${sale.body.id}/returns`)
+      .set(s.admin.auth)
+      .send({ items: [{ saleItemId: sale.body.items[0].id, quantity: 1 }], reason: 'Avaria', refundMethod: 'PIX' })
+      .expect(201);
+    const range = 'from=2020-01-01T00:00:00Z&to=2099-01-01T00:00:00Z';
+    const report = (await api().get(`/api/reports/sales?${range}`).set(s.admin.auth).expect(200)).body;
+    expect(report.totals).toMatchObject({ revenueCents: 2000, refundsCents: 2000, returns: 1, profitCents: 800 });
+    expect(report.byPayment.PIX).toBe(2000);
+    expect(report.products[0]).toMatchObject({ quantity: 1, revenueCents: 2000 });
+  });
+
+  it('venda em dinheiro de caixa já fechado não pode ser cancelada (só devolvida)', async () => {
+    const cash = await prisma.cashSession.findFirstOrThrow();
+    const cashSale = await sell('CASH', 4000);
+    const pixSale = await sell('PIX', 4000);
+    await api()
+      .post(`/api/cash/${cash.id}/close`)
+      .set(s.operator.auth)
+      .send({ countedCents: 14000, keptCents: 14000 })
+      .expect(200);
+    const res = await api()
+      .post(`/api/sales/${cashSale.body.id}/cancel`)
+      .set(s.admin.auth)
+      .send({ reason: 'Erro' })
+      .expect(409);
+    expect(res.body.error.message).toContain('Devolver itens');
+    await api().post(`/api/sales/${pixSale.body.id}/cancel`).set(s.admin.auth).send({ reason: 'Erro' }).expect(200);
+  });
+});

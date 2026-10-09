@@ -340,9 +340,19 @@ export async function createSale(input: SaleInput, userId: string) {
 /** Cancela a venda: os itens voltam ao estoque e a venda sai dos relatórios, mas fica no histórico. */
 export async function cancelSale(saleId: string, reason: string, userId: string) {
   const result = await prisma.$transaction(async (tx) => {
-    const sale = await tx.sale.findUnique({ where: { id: saleId }, include: { items: true } });
+    const sale = await tx.sale.findUnique({
+      where: { id: saleId },
+      include: { items: true, payments: true, cashSession: { select: { status: true } } },
+    });
     if (!sale) throw notFound('Venda');
     if (sale.status === 'CANCELLED') throw conflict('Esta venda já foi cancelada');
+    // O dinheiro de um caixa já fechado foi conferido e retirado: cancelar mudaria a conferência dele
+    // e o dinheiro devolvido sairia do caixa de hoje sem registro. A devolução registra no caixa aberto.
+    const cashCents =
+      sale.payments.filter((p) => p.method === 'CASH').reduce((sum, p) => sum + p.amountCents, 0) - sale.changeCents;
+    if (sale.cashSession?.status === 'CLOSED' && cashCents > 0) {
+      throw conflict('Esta venda é de um caixa já fechado. Para devolver o dinheiro ao cliente, use "Devolver itens".');
+    }
     if (await tx.saleReturn.count({ where: { saleId: sale.id } })) {
       throw conflict('Esta venda já tem devolução. Para desfazer o restante, use "Devolver itens".');
     }
