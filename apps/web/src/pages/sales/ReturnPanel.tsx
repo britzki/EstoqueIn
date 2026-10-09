@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api';
+import { invalidateSaleData } from '../../lib/hooks';
 import { useToast } from '../../lib/toast';
 import { PAYMENT_LABEL, formatMoney, formatNumber } from '../../lib/format';
 import type { PaymentMethod, SaleDetail } from '../../lib/types';
@@ -20,24 +21,30 @@ export function ReturnPanel({ sale, onDone }: { sale: SaleDetail; onDone: () => 
   const [method, setMethod] = useState<PaymentMethod>(sale.payments[0]?.method ?? 'CASH');
   const [reason, setReason] = useState('');
 
-  const factor = sale.subtotalCents > 0 ? sale.totalCents / sale.subtotalCents : 1;
+  // Mesma conta do servidor (createReturn): valor cobrado por unidade, com promoção, proporcional ao
+  // desconto da venda e sem a taxa de entrega.
+  const factor = sale.subtotalCents > 0 ? (sale.totalCents - (sale.deliveryFeeCents ?? 0)) / sale.subtotalCents : 1;
   const lines = sale.items
     .map((item) => ({ item, quantity: Math.min(toNumber(quantities[item.id] ?? ''), item.returnable ?? 0) }))
     .filter((line) => line.quantity > 0);
-  const refund = lines.reduce((sum, line) => sum + Math.round(line.quantity * line.item.unitPriceCents * factor), 0);
+  const refund = lines.reduce(
+    (sum, line) => sum + Math.round(line.quantity * (line.item.totalCents / line.item.quantity) * factor),
+    0,
+  );
 
   const save = useMutation({
     mutationFn: () =>
-      api.post(`/sales/${sale.id}/returns`, {
+      api.post<{ refundCents: number }>(`/sales/${sale.id}/returns`, {
         items: lines.map((line) => ({ saleItemId: line.item.id, quantity: line.quantity })),
         reason,
         refundMethod: method,
       }),
-    onSuccess: () => {
-      toast.success('Devolução registrada', `Devolver ${formatMoney(refund)} ao cliente (${PAYMENT_LABEL[method]}).`);
-      for (const key of ['sales', 'sale', 'products', 'product', 'alerts', 'dashboard', 'movements', 'cash']) {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      }
+    onSuccess: (saved) => {
+      toast.success(
+        'Devolução registrada',
+        `Devolver ${formatMoney(saved.refundCents)} ao cliente (${PAYMENT_LABEL[method]}).`,
+      );
+      invalidateSaleData(queryClient);
       onDone();
     },
   });

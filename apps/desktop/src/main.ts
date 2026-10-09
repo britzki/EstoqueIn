@@ -15,6 +15,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -38,7 +39,7 @@ interface ServerModule {
     preferredPort?: number;
   }): Promise<DesktopServer>;
   backupDatabase(destination: string): Promise<void>;
-  isSqliteFile(file: string): boolean;
+  checkBackupFile(file: string, migrationsDir: string): Promise<string | null>;
   runAutomaticBackup(backupsDir: string, keep?: number): Promise<string | null>;
   runExternalBackup(externalDir: string, tempDir: string, keep?: number, force?: boolean): Promise<string | null>;
   getDiagnostics(): Promise<Record<string, unknown>>;
@@ -62,6 +63,7 @@ const dataDir = app.getPath('userData');
 const dbPath = join(dataDir, 'estoquein.db');
 const backupsDir = join(dataDir, 'backups');
 const logsDir = join(dataDir, 'logs');
+const migrationsDir = join(__dirname, 'migrations');
 
 let server: DesktopServer | null = null;
 let serverModule: ServerModule | null = null;
@@ -99,13 +101,33 @@ interface LocalConfig {
 
 const configFile = () => join(dataDir, 'config.json');
 
+const stamp = () => new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+
+/** Grava num arquivo provisório e renomeia: uma queda de energia no meio não deixa o arquivo pela metade. */
 function saveLocalConfig(config: LocalConfig) {
-  writeFileSync(configFile(), JSON.stringify(config, null, 2));
+  const temporary = `${configFile()}.tmp`;
+  writeFileSync(temporary, JSON.stringify(config, null, 2));
+  renameSync(temporary, configFile());
 }
 
+const newJwtSecret = () => randomBytes(48).toString('hex');
+
+/**
+ * Lê a configuração local. Se o arquivo estiver danificado, guarda a cópia ruim e recomeça com um
+ * segredo novo: o programa abre normalmente (só é preciso entrar de novo e refazer a escolha da
+ * impressora e da pasta de cópia externa).
+ */
 function loadLocalConfig(): LocalConfig {
-  if (existsSync(configFile())) return JSON.parse(readFileSync(configFile(), 'utf8'));
-  const config = { jwtSecret: randomBytes(48).toString('hex') };
+  if (existsSync(configFile())) {
+    try {
+      const config = JSON.parse(readFileSync(configFile(), 'utf8')) as LocalConfig;
+      if (typeof config.jwtSecret === 'string' && config.jwtSecret.length >= 16) return config;
+    } catch (error) {
+      console.error('config.json danificado; criando um novo', error);
+    }
+    renameSync(configFile(), join(dataDir, `config.danificado-${stamp()}.json`));
+  }
+  const config = { jwtSecret: newJwtSecret() };
   saveLocalConfig(config);
   return config;
 }
@@ -121,13 +143,16 @@ function registerPrinting() {
     }));
   });
   ipcMain.handle('printers:get', () => loadLocalConfig().receiptPrinter ?? null);
-  ipcMain.handle('printers:set', (_event, name: string | null) => {
-    saveLocalConfig({ ...loadLocalConfig(), receiptPrinter: name || null });
+  ipcMain.handle('printers:set', (_event, name: unknown) => {
+    const receiptPrinter = typeof name === 'string' && name.length <= 256 ? name : null;
+    saveLocalConfig({ ...loadLocalConfig(), receiptPrinter: receiptPrinter || null });
   });
 
   // Imprime a página atual (a notinha está na área de impressão). Com impressora configurada,
   // sai direto; sem, abre o diálogo de impressão do Windows.
-  ipcMain.handle('receipt:print', (_event, widthMm: number) => {
+  ipcMain.handle('receipt:print', (_event, width: unknown) => {
+    // Só as larguras de bobina que a tela oferece.
+    const widthMm = width === 58 ? 58 : 80;
     const deviceName = loadLocalConfig().receiptPrinter ?? undefined;
     return new Promise<{ ok: boolean; error?: string }>((resolve) => {
       if (!mainWindow) return resolve({ ok: false, error: 'Janela fechada' });
@@ -138,7 +163,7 @@ function registerPrinting() {
           printBackground: false,
           margins: { marginType: 'none' },
           // Bobina: largura fixa e altura longa; a impressora corta onde o conteúdo termina.
-          pageSize: { width: Math.round((widthMm || 80) * 1000), height: 297_000 },
+          pageSize: { width: widthMm * 1000, height: 297_000 },
         },
         (ok, failureReason) => {
           if (!ok && failureReason) console.warn('Impressão da notinha:', failureReason);
@@ -170,8 +195,6 @@ function prepareEnvironment() {
 }
 
 /* ---------- Backup e restauração ---------- */
-
-const stamp = () => new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
 
 async function backupNow() {
   if (!serverModule || !mainWindow) return;
@@ -209,8 +232,9 @@ async function restoreBackup() {
   const file = filePaths[0];
   if (canceled || !file) return;
 
-  if (!serverModule.isSqliteFile(file)) {
-    dialog.showErrorBox('Arquivo inválido', 'O arquivo escolhido não é um backup do EstoqueIn.');
+  const problem = await serverModule.checkBackupFile(file, migrationsDir);
+  if (problem) {
+    dialog.showErrorBox('Não é possível restaurar este arquivo', problem);
     return;
   }
 
@@ -439,17 +463,29 @@ function createWindow(url: string) {
     mainWindow?.show();
   });
 
-  // Links externos abrem no navegador padrão, nunca dentro do app.
+  // Links externos (WhatsApp) abrem no navegador padrão, nunca dentro do app. A janela só navega
+  // dentro da própria interface, e para fora só saem endereços http(s): outros esquemas (file:,
+  // protocolos do Windows) poderiam abrir programas no computador.
   const origin = new URL(url).origin;
+  const parse = (target: string) => {
+    try {
+      return new URL(target);
+    } catch {
+      return null;
+    }
+  };
+  const openOutside = (target: string) => {
+    const parsed = parse(target);
+    if (parsed && (parsed.protocol === 'https:' || parsed.protocol === 'http:')) void shell.openExternal(parsed.href);
+  };
   mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
-    if (/^https?:/.test(target)) shell.openExternal(target);
+    openOutside(target);
     return { action: 'deny' };
   });
   mainWindow.webContents.on('will-navigate', (event, target) => {
-    if (!target.startsWith(origin)) {
-      event.preventDefault();
-      shell.openExternal(target);
-    }
+    if (parse(target)?.origin === origin) return;
+    event.preventDefault();
+    openOutside(target);
   });
 
   mainWindow.on('closed', () => (mainWindow = null));
@@ -562,7 +598,7 @@ async function start() {
   serverModule = require(join(__dirname, 'server.cjs')) as ServerModule;
   server = await serverModule.startDesktopServer({
     webDist: join(__dirname, 'web'),
-    migrationsDir: join(__dirname, 'migrations'),
+    migrationsDir,
     backupsDir,
     preferredPort: process.env.ESTOQUEIN_PORT ? Number(process.env.ESTOQUEIN_PORT) : undefined,
   });

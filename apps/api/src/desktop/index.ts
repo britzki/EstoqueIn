@@ -11,6 +11,7 @@ import { resetAdminPassword } from '../modules/users/recovery.js';
 import {
   applyMigrations,
   backupDatabase,
+  checkBackupFile,
   configureSqlite,
   getDiagnostics,
   isSqliteFile,
@@ -57,4 +58,12 @@ export async function startDesktopServer({
   };
 }
 
-export { backupDatabase, getDiagnostics, isSqliteFile, resetAdminPassword, runAutomaticBackup, runExternalBackup };
+export {
+  backupDatabase,
+  checkBackupFile,
+  getDiagnostics,
+  isSqliteFile,
+  resetAdminPassword,
+  runAutomaticBackup,
+  runExternalBackup,
+};

@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { cn } from '../../lib/cn';
-import { useCurrentCash, useDebounced, useSaleWarehouse, useStoreSettings } from '../../lib/hooks';
+import { useCurrentCash, useDebounced, useSaleWarehouse, useStoreSettings, invalidateSaleData } from '../../lib/hooks';
 import { useToast } from '../../lib/toast';
 import { centsToInput, formatMoney, formatNumber, parseMoneyInput } from '../../lib/format';
 import type {
@@ -182,6 +182,8 @@ export function NewSalePage() {
   const resolve = async () => {
     const value = code.trim();
     if (!value) return;
+    // Limpa já: o leitor pode mandar o próximo código antes da resposta chegar.
+    setCode('');
     try {
       const result = await api.get<ResolvedCode>('/sales/resolve', { code: value, warehouseId: activeWarehouse });
       addToCart(result.product, result.quantity);
@@ -190,6 +192,7 @@ export function NewSalePage() {
         const [only] = matches;
         return addToCart(only, only.fractional ? null : 1);
       }
+      setCode(value);
       setScanError((error as Error).message);
     }
   };
@@ -286,6 +289,9 @@ export function NewSalePage() {
       setReceived('');
       setFirstAmount('');
       setSplit(false);
+      // A próxima venda começa em dinheiro: herdar o Pix da anterior faria o caixa não bater.
+      setMethod('CASH');
+      setSecondMethod('PIX');
       setCustomer({ customer: null, name: '' });
       setDelivery(null);
       if (sale.alertsOpened)
@@ -295,19 +301,7 @@ export function NewSalePage() {
         if (sale.delivery) void deliverySlip.print(sale.delivery.id);
         else receipt.print(sale);
       }
-      for (const key of [
-        'deliveries',
-        'products',
-        'product',
-        'alerts',
-        'dashboard',
-        'movements',
-        'sales',
-        'warehouses',
-        'cash',
-      ]) {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      }
+      invalidateSaleData(queryClient);
       scanRef.current?.focus();
     },
   });

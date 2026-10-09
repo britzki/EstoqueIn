@@ -1,7 +1,7 @@
-import { PAYMENT_LABEL, formatDateTime, formatMoney } from '../../lib/format';
+import { PAYMENT_LABEL, formatDateTime, formatMoneyPlain } from '../../lib/format';
 import type { CashDetail, PaymentMethod, StoreSettings } from '../../lib/types';
 
-const money = (cents: number) => formatMoney(cents).replace('R$', '').trim();
+const money = formatMoneyPlain;
 const METHODS: PaymentMethod[] = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER', 'ACCOUNT'];
 
 /** Comprovante de fechamento de caixa para a bobina: fica guardado junto com o dinheiro. */

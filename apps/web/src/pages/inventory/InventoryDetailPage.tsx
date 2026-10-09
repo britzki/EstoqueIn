@@ -37,6 +37,7 @@ export function InventoryDetailPage() {
   const [confirming, setConfirming] = useState(false);
   const [scan, setScan] = useState({ barcode: '', quantity: '1', mode: 'add' as 'add' | 'set' });
   const scanRef = useRef<HTMLInputElement>(null);
+  const scanQueue = useRef(Promise.resolve());
 
   const key = ['inventory', id];
   const inventory = useQuery({ queryKey: key, queryFn: () => api.get<InventoryDetail>(`/inventories/${id}`) });
@@ -46,22 +47,18 @@ export function InventoryDetailPage() {
   };
 
   const scanMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (barcode: string) =>
       api.post<InventoryItem>(`/inventories/${id}/scan`, {
-        barcode: scan.barcode.trim(),
+        barcode,
         quantity: Number(scan.quantity),
         mode: scan.mode,
       }),
     onSuccess: (item) => {
       toast.success(item.product.name, `Contado: ${formatNumber(item.countedQuantity ?? 0)}`);
-      setScan((current) => ({ ...current, barcode: '' }));
       refresh();
       scanRef.current?.focus();
     },
-    onError: (error) => {
-      toast.error('Leitura não registrada', error.message);
-      setScan((current) => ({ ...current, barcode: '' }));
-    },
+    onError: (error) => toast.error('Leitura não registrada', error.message),
   });
 
   const complete = useMutation({
@@ -101,9 +98,19 @@ export function InventoryDetailPage() {
   );
   const status = INVENTORY_STATUS[inv.status];
 
+  // O leitor pode bipar o próximo produto antes de a leitura anterior ser salva: o campo é limpo na
+  // hora e as leituras vão para o servidor uma de cada vez, na ordem (nenhuma se perde).
   const onScan = (event: FormEvent) => {
     event.preventDefault();
-    if (scan.barcode.trim()) scanMutation.mutate();
+    const barcode = scan.barcode.trim();
+    if (!barcode) return;
+    setScan((current) => ({ ...current, barcode: '' }));
+    scanQueue.current = scanQueue.current.then(() =>
+      scanMutation.mutateAsync(barcode).then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
   };
 
   return (
@@ -173,7 +180,7 @@ export function InventoryDetailPage() {
                   <option value="set">Substituir</option>
                 </Select>
               </div>
-              <Button type="submit" className="w-full" loading={scanMutation.isPending}>
+              <Button type="submit" className="w-full">
                 Registrar leitura
               </Button>
             </form>
@@ -285,13 +292,19 @@ function ItemRow({
   }
 
   const save = useMutation({
-    mutationFn: () =>
-      api.patch(`/inventories/${inventoryId}/items/${item.id}`, {
-        countedQuantity: value === '' ? null : Number(value),
-      }),
+    mutationFn: (countedQuantity: number | null) =>
+      api.patch(`/inventories/${inventoryId}/items/${item.id}`, { countedQuantity }),
     onSuccess: onSaved,
     onError: (error) => toast.error('Não foi possível salvar', error.message),
   });
+
+  // Só "," ou outro resto inválido não pode virar "limpar a contagem": volta ao valor salvo.
+  const saveCount = () => {
+    if (value === initial) return;
+    const counted = value === '' ? null : Number(value);
+    if (counted !== null && !Number.isFinite(counted)) return setValue(initial);
+    save.mutate(counted);
+  };
 
   const difference = closed
     ? item.difference
@@ -314,7 +327,7 @@ function ItemRow({
           <DecimalInput
             value={value}
             onChange={(value) => setValue(value)}
-            onBlur={() => value !== initial && save.mutate()}
+            onBlur={saveCount}
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
             className="ml-auto h-8 w-24 text-right"
             placeholder="—"

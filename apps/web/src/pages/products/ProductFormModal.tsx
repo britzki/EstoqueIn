@@ -4,6 +4,8 @@ import { Sparkles } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { useCategories, useSuppliers } from '../../lib/hooks';
 import { FRACTIONAL_UNITS, UNITS, centsToInput, formatMoney, parseMoneyInput } from '../../lib/format';
+
+const INVALID_MONEY = 'Valor inválido. Use o formato 12,50';
 import { useToast } from '../../lib/toast';
 import type { Product, ProductSource } from '../../lib/types';
 import { Button, DecimalInput, ErrorMessage, Field, Input, Modal, Select, Textarea } from '../../components/ui';
@@ -154,8 +156,13 @@ export function ProductFormModal({
     }
   };
 
+  const priceInvalid = form.price.trim() !== '' && parseMoneyInput(form.price) === null;
+  const costInvalid = !source && form.cost.trim() !== '' && parseMoneyInput(form.cost) === null;
+
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
+    // Texto inválido (ex.: "12,5O") não pode virar produto a R$ 0,00 sem ninguém perceber.
+    if (priceInvalid || costInvalid) return;
     mutation.mutate();
   };
 
@@ -325,7 +332,7 @@ export function ProductFormModal({
         {!source && (
           <Field
             label="Custo (R$)"
-            error={errors.costCents?.[0]}
+            error={costInvalid ? INVALID_MONEY : errors.costCents?.[0]}
             hint={product ? 'Recalculado (média ponderada) a cada entrada com custo.' : undefined}
           >
             {(id) => (
@@ -340,7 +347,10 @@ export function ProductFormModal({
           </Field>
         )}
 
-        <Field label={`Preço de venda por ${form.unit} (R$)`} error={errors.priceCents?.[0]}>
+        <Field
+          label={`Preço de venda por ${form.unit} (R$)`}
+          error={priceInvalid ? INVALID_MONEY : errors.priceCents?.[0]}
+        >
           {(id) => (
             <Input
               id={id}

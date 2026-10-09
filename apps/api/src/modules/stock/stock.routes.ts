@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { canSeeFinancials } from '../../lib/visibility.js';
+import { canSeeFinancials, movementsWithoutCost } from '../../lib/visibility.js';
+import { localDateTime } from '../../lib/dates.js';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { currentUser, requirePermission } from '../../middleware/auth.js';
@@ -31,27 +32,27 @@ const MOVEMENT_LABELS: Record<string, string> = {
 
 stockRoutes.post('/entries', requirePermission('stock:move'), async (req, res) => {
   const result = await registerEntry(entrySchema.parse(req.body), currentUser(req).id);
-  res.status(201).json(result);
+  res.status(201).json(movementsWithoutCost(req, result));
 });
 
 stockRoutes.post('/exits', requirePermission('stock:move'), async (req, res) => {
   const result = await registerExit(exitSchema.parse(req.body), currentUser(req).id);
-  res.status(201).json(result);
+  res.status(201).json(movementsWithoutCost(req, result));
 });
 
 stockRoutes.post('/transfers', requirePermission('stock:move'), async (req, res) => {
   const result = await transferStock(transferSchema.parse(req.body), currentUser(req).id);
-  res.status(201).json(result);
+  res.status(201).json(movementsWithoutCost(req, result));
 });
 
 stockRoutes.post('/adjustments', requirePermission('stock:adjust'), async (req, res) => {
   const result = await adjustStock(adjustmentSchema.parse(req.body), currentUser(req).id);
-  res.status(201).json(result);
+  res.status(201).json(movementsWithoutCost(req, result));
 });
 
 stockRoutes.post('/fractions', requirePermission('stock:move'), async (req, res) => {
   const result = await fractionate(fractionSchema.parse(req.body), currentUser(req).id);
-  res.status(201).json(result);
+  res.status(201).json(movementsWithoutCost(req, result));
 });
 
 stockRoutes.get('/movements', async (req, res) => {
@@ -75,7 +76,7 @@ stockRoutes.get('/movements', async (req, res) => {
   if (filters.format === 'csv') {
     const rows = await prisma.stockMovement.findMany({ where, include, orderBy, take: 50_000 });
     const csv = toCsv(rows, [
-      { header: 'Data', value: (m) => m.createdAt.toISOString() },
+      { header: 'Data', value: (m) => localDateTime(m.createdAt) },
       { header: 'Tipo', value: (m) => MOVEMENT_LABELS[m.type] },
       { header: 'SKU', value: (m) => m.product.sku },
       { header: 'Produto', value: (m) => m.product.name },
@@ -98,7 +99,7 @@ stockRoutes.get('/movements', async (req, res) => {
     prisma.stockMovement.findMany({ where, include, orderBy, ...toSkipTake(filters) }),
     prisma.stockMovement.count({ where }),
   ]);
-  res.json(paginated(data, total, filters));
+  res.json(paginated(movementsWithoutCost(req, data), total, filters));
 });
 
 stockRoutes.get('/levels', async (req, res) => {

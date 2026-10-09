@@ -1,6 +1,6 @@
 import { prisma } from '../../lib/prisma.js';
+import { calendarDay, fromCalendarDay } from '../../lib/dates.js';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 /** Intervalos menores que isso não são "recompra" (ex.: duas compras no mesmo fim de semana). */
 const MIN_INTERVAL_DAYS = 5;
 /** Depois de tanto tempo sem comprar, o cliente provavelmente mudou de hábito. */
@@ -23,10 +23,11 @@ export interface RepurchaseReminder {
  * o dono avisa o cliente antes que o produto acabe.
  *
  * @param horizonDays mostra o que vence até essa quantidade de dias (inclui os atrasados).
+ * @param customerId só os lembretes deste cliente (ficha do cliente).
  */
-export async function getRepurchaseReminders(horizonDays: number): Promise<RepurchaseReminder[]> {
+export async function getRepurchaseReminders(horizonDays: number, customerId?: string): Promise<RepurchaseReminder[]> {
   const sales = await prisma.sale.findMany({
-    where: { status: 'COMPLETED', customerId: { not: null } },
+    where: { status: 'COMPLETED', customerId: customerId ?? { not: null } },
     select: {
       createdAt: true,
       customer: { select: { id: true, name: true, phone: true, active: true } },
@@ -42,7 +43,8 @@ export async function getRepurchaseReminders(horizonDays: number): Promise<Repur
   >();
   for (const sale of sales) {
     if (!sale.customer?.active) continue;
-    const day = Math.floor(sale.createdAt.getTime() / DAY_MS);
+    // Dias contados no calendário da loja (não em UTC, que vira o dia às 21h no Brasil).
+    const day = calendarDay(sale.createdAt);
     for (const { product } of sale.items) {
       if (!product.active) continue;
       const key = `${sale.customer.id}:${product.id}`;
@@ -56,7 +58,7 @@ export async function getRepurchaseReminders(horizonDays: number): Promise<Repur
     }
   }
 
-  const today = Math.floor(Date.now() / DAY_MS);
+  const today = calendarDay(new Date());
   const reminders: RepurchaseReminder[] = [];
   for (const { customer, product, days } of groups.values()) {
     if (days.length < 2) continue;
@@ -72,8 +74,8 @@ export async function getRepurchaseReminders(horizonDays: number): Promise<Repur
       product,
       purchases: days.length,
       averageIntervalDays: Math.round(average),
-      lastPurchaseAt: new Date(days.at(-1)! * DAY_MS),
-      expectedAt: new Date(expectedDay * DAY_MS),
+      lastPurchaseAt: fromCalendarDay(days.at(-1)!),
+      expectedAt: fromCalendarDay(expectedDay),
       daysUntil,
     });
   }

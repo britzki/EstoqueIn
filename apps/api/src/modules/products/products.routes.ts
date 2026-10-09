@@ -180,7 +180,8 @@ productsRoutes.get('/:id', async (req, res) => {
     : null;
   res.json({
     ...withoutCost(req, rest),
-    // Sem permissão, os componentes do kit também vêm sem custo.
+    // Sem permissão, o pacote de origem do granel e os componentes do kit também vêm sem custo.
+    sourceProduct: rest.sourceProduct && withoutCost(req, rest.sourceProduct),
     kitItems: rest.kitItems.map((item) => ({ ...item, product: withoutCost(req, item.product) })),
     stock,
     kit,

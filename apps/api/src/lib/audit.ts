@@ -35,10 +35,14 @@ export function diff<T extends Record<string, unknown>>(
     if (SECRET_FIELDS.has(field) || after[field] === undefined) continue;
     const from = before[field] ?? null;
     const to = after[field] ?? null;
-    if (from !== to) changes[field] = { from, to };
+    if (!sameValue(from, to)) changes[field] = { from, to };
   }
   return changes;
 }
+
+/** Datas chegam como objetos diferentes (do banco e do formulário): compara pelo instante. */
+const sameValue = (a: unknown, b: unknown) =>
+  a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b;
 
 /** Grava um registro no histórico de alterações. */
 export async function recordAudit(actor: AuditActor, entry: AuditEntry, client: Tx = prisma) {

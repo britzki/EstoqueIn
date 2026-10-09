@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { api, tokenStore } from './api';
+import { api, ApiError, tokenStore } from './api';
 import type { Permission, Session } from './types';
 
 interface AuthContextValue {
@@ -27,20 +27,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api
       .get<Session>('/auth/me')
       .then(setSession)
-      .catch(() => tokenStore.clear())
+      // Só descarta o token se ele foi recusado; numa falha de rede ele continua valendo.
+      .catch((error) => error instanceof ApiError && error.status === 401 && tokenStore.clear())
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
-    const onUnauthorized = () => setSession(null);
+    // Sessão expirada ou usuário desativado: some também tudo o que estava em cache (faturamento,
+    // relatórios), para o próximo a entrar neste computador não ver os números de outro usuário.
+    const onUnauthorized = () => {
+      queryClient.clear();
+      setSession(null);
+    };
     window.addEventListener('estoquein:unauthorized', onUnauthorized);
     return () => window.removeEventListener('estoquein:unauthorized', onUnauthorized);
-  }, []);
+  }, [queryClient]);
 
-  const startSession = useCallback(({ token, ...data }: Session & { token: string }) => {
-    tokenStore.set(token);
-    setSession(data);
-  }, []);
+  const startSession = useCallback(
+    ({ token, ...data }: Session & { token: string }) => {
+      queryClient.clear();
+      tokenStore.set(token);
+      setSession(data);
+    },
+    [queryClient],
+  );
 
   const login = useCallback(
     async (email: string, password: string) => {

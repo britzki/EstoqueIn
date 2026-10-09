@@ -61,7 +61,8 @@ export async function getCustomerLoyalty(customerId: string, client: Tx = prisma
     }
     purchased = roundQty(Math.max(purchased, 0));
     const earned = Math.floor(purchased / rule.requiredQuantity + 1e-9);
-    const used = Math.round(usedQuantity / rule.rewardQuantity);
+    // Brinde dado pela metade conta como usado: arredondar para baixo deixaria dar o brinde de novo.
+    const used = Math.ceil(usedQuantity / rule.rewardQuantity - 1e-9);
     const progress = roundQty(purchased - earned * rule.requiredQuantity);
     return {
       rule: {

@@ -1,4 +1,5 @@
 import { useEffect, useId, type ComponentProps, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router';
 import { ChevronLeft, ChevronRight, LoaderCircle, X } from 'lucide-react';
 import { cn } from '../lib/cn';
@@ -384,7 +385,9 @@ export function Modal({
 
   if (!open) return null;
 
-  return (
+  // Fora da árvore da página: um modal aberto dentro de um <form> (Configurações) não pode enviar
+  // o formulário da página ao apertar Enter num campo do modal.
+  return createPortal(
     <div className="fixed inset-0 z-40 flex items-end justify-center p-0 sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[1px]" onClick={onClose} aria-hidden />
       <div
@@ -402,6 +405,7 @@ export function Modal({
             {description && <p className="mt-0.5 text-sm text-slate-500">{description}</p>}
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
             aria-label="Fechar"
@@ -412,7 +416,8 @@ export function Modal({
         <div className="overflow-y-auto px-6 py-5">{children}</div>
         {footer && <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -432,6 +437,7 @@ export function Tabs<T extends string>({
       {options.map((option) => (
         <button
           key={option.value}
+          type="button"
           role="tab"
           aria-selected={value === option.value}
           onClick={() => onChange(option.value)}

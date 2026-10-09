@@ -1,11 +1,12 @@
 import { useCallback } from 'react';
 import { api } from '../lib/api';
+import { useToast } from '../lib/toast';
 import { addressLine, collectInfo, formatDue } from '../lib/delivery';
-import { formatDateTime, formatNumber, formatPhone, formatMoney, PAYMENT_LABEL } from '../lib/format';
+import { formatDateTime, formatNumber, formatPhone, PAYMENT_LABEL, formatMoneyPlain } from '../lib/format';
 import type { DeliveryDetail, StoreSettings } from '../lib/types';
 import { useSlipPrinter } from './Receipt';
 
-const money = (cents: number) => formatMoney(cents).replace('R$', '').trim();
+const money = formatMoneyPlain;
 
 /**
  * Guia de entrega: vai junto com o pacote. Endereço em destaque, o que cobrar na porta
@@ -88,15 +89,20 @@ export function DeliverySlip({ delivery, settings }: { delivery: DeliveryDetail;
 
 /** Imprime a guia de entrega (busca os dados completos da entrega antes). */
 export function useDeliverySlipPrinter(settings: StoreSettings | undefined) {
+  const toast = useToast();
   const slip = useSlipPrinter(settings);
   const { print: printSlip } = slip;
   const print = useCallback(
     async (delivery: DeliveryDetail | string) => {
       if (!settings) return;
-      const full = typeof delivery === 'string' ? await api.get<DeliveryDetail>(`/deliveries/${delivery}`) : delivery;
-      printSlip(<DeliverySlip delivery={full} settings={settings} />);
+      try {
+        const full = typeof delivery === 'string' ? await api.get<DeliveryDetail>(`/deliveries/${delivery}`) : delivery;
+        printSlip(<DeliverySlip delivery={full} settings={settings} />);
+      } catch (error) {
+        toast.error('Não foi possível imprimir a guia', (error as Error).message);
+      }
     },
-    [settings, printSlip],
+    [settings, printSlip, toast],
   );
   return { print, portal: slip.portal };
 }

@@ -375,8 +375,11 @@ function StockRow({ productId, row, editable }: { productId: string; row: Produc
   });
 
   const dirty = value !== (row.minQuantity === null ? '' : String(row.minQuantity));
+  // Mesma classificação dos alertas do servidor: saldo negativo é sempre problema, com ou sem mínimo.
   const status =
-    row.effectiveMin > 0 && row.quantity === 0 ? (
+    row.quantity < 0 ? (
+      <Badge tone="red">{ALERT_LABEL.NEGATIVE_STOCK}</Badge>
+    ) : row.effectiveMin > 0 && row.quantity === 0 ? (
       <Badge tone="red">Sem estoque</Badge>
     ) : row.effectiveMin > 0 && row.quantity <= row.effectiveMin ? (
       <Badge tone="yellow">Baixo</Badge>

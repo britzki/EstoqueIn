@@ -7,6 +7,7 @@ import { param } from '../../lib/http.js';
 import { optionalId } from '../../lib/validation.js';
 import { actorOf, diff, recordAudit, recordUpdate } from '../../lib/audit.js';
 import { requirePermission } from '../../middleware/auth.js';
+import { startOfToday } from '../../lib/dates.js';
 
 /**
  * Painel de entregas: separar → saiu (com o entregador) → entregue.
@@ -40,12 +41,6 @@ const deliveryInclude = {
   },
 } satisfies Prisma.DeliveryInclude;
 
-const startOfToday = () => {
-  const day = new Date();
-  day.setHours(0, 0, 0, 0);
-  return day;
-};
-
 /** Sem filtro: as que estão em aberto e as concluídas hoje. Com data: as criadas no período. */
 deliveriesRoutes.get('/', async (req, res) => {
   const filters = z.object({ from: z.coerce.date().optional(), to: z.coerce.date().optional() }).parse(req.query);
@@ -62,12 +57,32 @@ deliveriesRoutes.get('/', async (req, res) => {
   res.json(deliveries);
 });
 
+/**
+ * O que o entregador recebeu na porta: o total menos a parte no fiado (que fica na conta do cliente).
+ * Mesma conta da guia de entrega (collectInfo em apps/web/src/lib/delivery.ts).
+ */
+function collectedAtDoor(delivery: {
+  collectOnDelivery: boolean;
+  sale: { totalCents: number; payments: Array<{ method: string; amountCents: number }> };
+}) {
+  if (!delivery.collectOnDelivery) return 0;
+  const onAccount = delivery.sale.payments
+    .filter((payment) => payment.method === 'ACCOUNT')
+    .reduce((sum, payment) => sum + payment.amountCents, 0);
+  return Math.max(delivery.sale.totalCents - onAccount, 0);
+}
+
 /** Acerto com os entregadores: quantas entregas cada um fez no período e quanto dá a pagar. */
 deliveriesRoutes.get('/couriers-report', requirePermission('reports:read'), async (req, res) => {
   const { from, to } = z.object({ from: z.coerce.date(), to: z.coerce.date() }).parse(req.query);
   const delivered = await prisma.delivery.findMany({
     where: { status: 'DELIVERED', finishedAt: { gte: from, lte: to } },
-    select: { courierId: true, feeCents: true, collectOnDelivery: true, sale: { select: { totalCents: true } } },
+    select: {
+      courierId: true,
+      feeCents: true,
+      collectOnDelivery: true,
+      sale: { select: { totalCents: true, payments: { select: { method: true, amountCents: true } } } },
+    },
   });
   const couriers = await prisma.courier.findMany({ orderBy: { name: 'asc' } });
   const rows = [...new Set(delivered.map((d) => d.courierId))].map((courierId) => {
@@ -77,7 +92,7 @@ deliveriesRoutes.get('/couriers-report', requirePermission('reports:read'), asyn
       courier: courier && { id: courier.id, name: courier.name, feePerDeliveryCents: courier.feePerDeliveryCents },
       deliveries: mine.length,
       feesChargedCents: mine.reduce((sum, d) => sum + d.feeCents, 0),
-      collectedCents: mine.filter((d) => d.collectOnDelivery).reduce((sum, d) => sum + d.sale.totalCents, 0),
+      collectedCents: mine.reduce((sum, d) => sum + collectedAtDoor(d), 0),
       toPayCents: (courier?.feePerDeliveryCents ?? 0) * mine.length,
     };
   });
@@ -171,6 +186,10 @@ const courierSchema = z.object({
   feePerDeliveryCents: z.number().int().min(0).max(100_000).default(0),
   active: z.boolean().optional(),
 });
+// No Zod 4, .partial() ainda aplica os .default(): sem tirar o padrão, um PATCH sem o campo o zeraria.
+const courierUpdateSchema = courierSchema
+  .extend({ feePerDeliveryCents: z.number().int().min(0).max(100_000) })
+  .partial();
 
 couriersRoutes.get('/', async (_req, res) => {
   res.json(await prisma.courier.findMany({ orderBy: [{ active: 'desc' }, { name: 'asc' }] }));
@@ -188,7 +207,7 @@ couriersRoutes.post('/', requirePermission('settings:manage'), async (req, res) 
 });
 
 couriersRoutes.patch('/:id', requirePermission('settings:manage'), async (req, res) => {
-  const data = courierSchema.partial().parse(req.body);
+  const data = courierUpdateSchema.parse(req.body);
   const before = await prisma.courier.findUnique({ where: { id: param(req, 'id') } });
   if (!before) throw notFound('Entregador');
   const courier = await prisma.courier.update({ where: { id: before.id }, data });

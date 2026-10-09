@@ -100,7 +100,8 @@ export async function getCashSummary(sessionId: string) {
       accountReceivedCents: session.customerPayments.reduce((sum, payment) => sum + payment.amountCents, 0),
       withdrawalsCents: withdrawals,
       depositsCents: deposits,
-      expectedCashCents,
+      // Caixa fechado mostra o esperado gravado no fechamento (não muda se algo for alterado depois).
+      expectedCashCents: session.expectedCents ?? expectedCashCents,
       differenceCents:
         session.countedCents === null ? null : session.countedCents - (session.expectedCents ?? expectedCashCents),
       // Retirado da gaveta no fechamento (o lucro do dia em dinheiro, que vai para o cofre ou o banco).
@@ -179,8 +180,9 @@ export async function closeCash(sessionId: string, input: z.infer<typeof closeSc
   if (keptCents !== null && keptCents > input.countedCents) {
     throw unprocessable('O valor que fica na gaveta não pode ser maior que o dinheiro contado', 'KEPT_EXCEEDS_COUNTED');
   }
-  await prisma.cashSession.update({
-    where: { id: sessionId },
+  // Só fecha se ainda estiver aberto: dois cliques (ou dois computadores) não fecham o caixa duas vezes.
+  const { count } = await prisma.cashSession.updateMany({
+    where: { id: sessionId, status: 'OPEN' },
     data: {
       status: 'CLOSED',
       closedAt: new Date(),
@@ -191,5 +193,6 @@ export async function closeCash(sessionId: string, input: z.infer<typeof closeSc
       notes: input.notes ?? null,
     },
   });
+  if (count === 0) throw conflict('Este caixa já foi fechado');
   return getCashSummary(sessionId);
 }

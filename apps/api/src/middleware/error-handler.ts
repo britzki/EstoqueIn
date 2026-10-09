@@ -8,7 +8,10 @@ export function notFoundHandler(req: Request, res: Response) {
   res.status(404).json({ error: { code: 'NOT_FOUND', message: `Rota ${req.method} ${req.path} não encontrada` } });
 }
 
-export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
+export function errorHandler(err: unknown, _req: Request, res: Response, next: NextFunction) {
+  // Resposta já começou a ser enviada (ex.: download): o Express encerra a conexão.
+  if (res.headersSent) return next(err);
+
   if (err instanceof AppError) {
     res.status(err.statusCode).json({ error: { code: err.code, message: err.message, details: err.details } });
     return;
@@ -50,6 +53,19 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
 
   if (err instanceof SyntaxError && 'body' in err) {
     res.status(400).json({ error: { code: 'INVALID_JSON', message: 'JSON inválido no corpo da requisição' } });
+    return;
+  }
+
+  // Erros do leitor do corpo da requisição (corpo grande demais, codificação não suportada...).
+  const status = (err as { status?: unknown; type?: unknown } | null)?.status;
+  if (
+    typeof status === 'number' &&
+    status >= 400 &&
+    status < 500 &&
+    typeof (err as { type?: unknown }).type === 'string'
+  ) {
+    const message = status === 413 ? 'Dados grandes demais para enviar de uma vez' : 'Requisição inválida';
+    res.status(status).json({ error: { code: 'BAD_REQUEST', message } });
     return;
   }
 

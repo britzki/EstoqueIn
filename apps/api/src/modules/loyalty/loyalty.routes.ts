@@ -22,6 +22,8 @@ const ruleSchema = z.object({
   rewardQuantity: positiveQty.default(1),
   active: z.boolean().optional(),
 });
+// No Zod 4, .partial() ainda aplica os .default(): sem tirar o padrão, um PATCH sem o campo o zeraria.
+const ruleUpdateSchema = ruleSchema.extend({ rewardQuantity: positiveQty }).partial();
 
 const include = {
   product: { select: { id: true, name: true, unit: true } },
@@ -60,7 +62,7 @@ loyaltyRoutes.post('/', requirePermission('settings:manage'), async (req, res) =
 
 /** Alterar a regra não apaga o histórico: as compras continuam contando. */
 loyaltyRoutes.patch('/:id', requirePermission('settings:manage'), async (req, res) => {
-  const data = ruleSchema.partial().parse(req.body);
+  const data = ruleUpdateSchema.parse(req.body);
   const before = await prisma.loyaltyRule.findUnique({ where: { id: param(req, 'id') } });
   if (!before) throw notFound('Cartão fidelidade');
   if (data.productId !== undefined || data.category !== undefined) {

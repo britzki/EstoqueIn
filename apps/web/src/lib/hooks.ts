@@ -1,7 +1,29 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { api } from './api';
 import type { CashDetail, Paginated, StoreSettings, Supplier, Warehouse } from './types';
+
+/**
+ * Tudo o que uma venda, um cancelamento ou uma devolução mexe: estoque, caixa, entregas e a ficha
+ * do cliente (fiado, cartão fidelidade). Uma lista só, para nenhuma tela ficar desatualizada.
+ */
+export function invalidateSaleData(queryClient: QueryClient) {
+  for (const key of [
+    'sales',
+    'sale',
+    'deliveries',
+    'products',
+    'product',
+    'alerts',
+    'dashboard',
+    'movements',
+    'warehouses',
+    'cash',
+    'customers',
+  ]) {
+    queryClient.invalidateQueries({ queryKey: [key] });
+  }
+}
 
 export function useDebounced<T>(value: T, delay = 300) {
   const [debounced, setDebounced] = useState(value);

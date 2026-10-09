@@ -99,7 +99,7 @@ customersRoutes.get('/:id', async (req, res) => {
     where: { customerId: customer.id },
     orderBy: { createdAt: 'asc' },
   });
-  const reminders = (await getRepurchaseReminders(365)).filter((reminder) => reminder.customer.id === customer.id);
+  const reminders = await getRepurchaseReminders(365, customer.id);
   res.json({ ...customer, addresses, reminders, balanceCents: await getCustomerBalance(customer.id) });
 });
 

@@ -95,10 +95,17 @@ const normalizeUnit = (unit: string) => {
 
 export function parseNfeXml(xml: string): NfeDocument {
   if (!xml.includes('<')) throw badRequest('O arquivo não é um XML');
+  // NF-e nunca tem DOCTYPE; recusar evita XML com entidades que se expandem (ataque de "bomba" de XML).
+  if (/<!DOCTYPE/i.test(xml)) throw badRequest('XML com DOCTYPE não é aceito (não é uma NF-e)');
   const validation = XMLValidator.validate(xml);
   if (validation !== true) throw badRequest(`XML inválido: ${validation.err.msg} (linha ${validation.err.line})`);
 
-  const root = parser.parse(xml) as Node;
+  let root: Node;
+  try {
+    root = parser.parse(xml) as Node;
+  } catch {
+    throw badRequest('XML inválido ou malformado');
+  }
   const proc = root.nfeProc as Node | undefined;
   const nfe = (proc?.NFe ?? root.NFe) as Node | undefined;
   const inf = nfe?.infNFe as Node | undefined;

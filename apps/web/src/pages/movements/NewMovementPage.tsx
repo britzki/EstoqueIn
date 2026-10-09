@@ -109,7 +109,9 @@ export function NewMovementPage() {
   // Fracionamento: o usuário pode escolher tanto o pacote quanto o granel; daqui saem os dois lados.
   const selectedIsBulk = Boolean(detail.data?.sourceProduct);
   const bulkOptions = detail.data?.bulkProducts.filter((bulk) => bulk.active) ?? [];
-  const bulkId = selectedIsBulk ? detail.data?.id : form.bulkProductId || bulkOptions[0]?.id;
+  // O granel escolhido só vale se for deste produto (o usuário pode ter trocado de produto depois).
+  const chosenBulk = bulkOptions.find((option) => option.id === form.bulkProductId) ?? bulkOptions[0];
+  const bulkId = selectedIsBulk ? detail.data?.id : chosenBulk?.id;
   const packId = selectedIsBulk ? detail.data?.sourceProduct?.id : bulkId ? detail.data?.id : undefined;
   const packDetail = useProductDetail(kind === 'fraction' ? packId : undefined);
   const bulkDetail = useProductDetail(kind === 'fraction' ? bulkId : undefined);
@@ -526,9 +528,16 @@ export function NewMovementPage() {
                 <strong className="text-slate-900">
                   {formatNumber(bulkQuantity)} {bulk.unit}
                 </strong>{' '}
-                a granel, a{' '}
-                <strong className="text-slate-900">{formatMoney(Math.round(pack.costCents / yieldPerPack))}</strong> por{' '}
-                {bulk.unit}.
+                a granel
+                {/* Custo só aparece para quem pode ver os números do negócio (para os outros vem vazio). */}
+                {pack.costCents !== null && (
+                  <>
+                    , a{' '}
+                    <strong className="text-slate-900">{formatMoney(Math.round(pack.costCents / yieldPerPack))}</strong>{' '}
+                    por {bulk.unit}
+                  </>
+                )}
+                .
               </p>
             )}
 

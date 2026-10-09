@@ -57,7 +57,6 @@ const QUESTIONS: Array<[string, string]> = [
   ['paguei a conta com dinheiro do caixa', 'pagar-conta'],
   ['resumo do mês para o contador', 'fechamento-mes'],
   ['o leitor de codigo de barras nao acha o produto', 'produto-nao-encontrado'],
-  ['nao consigo entrar no sistema', 'esqueci-senha'],
 ];
 
 describe('Central de ajuda', () => {

@@ -9,6 +9,7 @@ import { paginated, paginationSchema, toSkipTake } from '../../lib/pagination.js
 import { id, optionalId, optionalText, positiveInt } from '../../lib/validation.js';
 import { actorOf, diff, recordAudit, recordUpdate } from '../../lib/audit.js';
 import { currentUser, requirePermission } from '../../middleware/auth.js';
+import { DAY_MS, startOfToday } from '../../lib/dates.js';
 
 /**
  * Contas a pagar: boletos de fornecedor, aluguel, luz...
@@ -16,8 +17,6 @@ import { currentUser, requirePermission } from '../../middleware/auth.js';
  * Paga com dinheiro da gaveta: vira uma sangria no caixa aberto, para o fechamento bater.
  */
 export const billsRoutes = Router();
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 const billSchema = z.object({
   description: z.string().trim().min(2, 'Descreva a conta').max(120),
@@ -28,6 +27,8 @@ const billSchema = z.object({
   monthly: z.boolean().default(false),
   notes: optionalText(300),
 });
+// No Zod 4, .partial() ainda aplica os .default(): sem tirar o padrão, um PATCH sem o campo o zeraria.
+const billUpdateSchema = billSchema.extend({ monthly: z.boolean() }).partial();
 
 const paySchema = z.object({
   paidAt: z.coerce.date().optional(),
@@ -56,13 +57,6 @@ function nextMonth(date: Date) {
   next.setDate(Math.min(day, lastDay));
   return next;
 }
-
-/** Início do dia de hoje (para "vencida" contar só a partir do dia seguinte ao vencimento). */
-const startOfToday = () => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return today;
-};
 
 /** Resumo para a tela inicial: vencidas e vencendo nos próximos dias. */
 export async function getBillsSummary(days = 7) {
@@ -131,7 +125,7 @@ billsRoutes.post('/', requirePermission('bills:manage'), async (req, res) => {
 });
 
 billsRoutes.patch('/:id', requirePermission('bills:manage'), async (req, res) => {
-  const data = billSchema.partial().parse(req.body);
+  const data = billUpdateSchema.parse(req.body);
   const before = await prisma.bill.findUnique({ where: { id: param(req, 'id') } });
   if (!before) throw notFound('Conta');
   if (before.status !== 'OPEN') throw conflict('Só dá para alterar conta em aberto');

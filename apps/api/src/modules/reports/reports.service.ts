@@ -1,18 +1,7 @@
 import { prisma } from '../../lib/prisma.js';
-import { env } from '../../config/env.js';
+import { DAY_MS, dayKey } from '../../lib/dates.js';
 import { roundQty } from '../../lib/quantity.js';
 import { getTodaySales } from '../sales/sales.report.js';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Data no fuso da empresa no formato AAAA-MM-DD (agrupamento por dia nos gráficos). */
-const dayKey = (date: Date) =>
-  new Intl.DateTimeFormat('en-CA', {
-    timeZone: env.APP_TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date);
 
 export async function getDashboard() {
   const since = new Date(Date.now() - 29 * DAY_MS);

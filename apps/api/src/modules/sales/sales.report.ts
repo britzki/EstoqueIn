@@ -1,14 +1,6 @@
 import { prisma } from '../../lib/prisma.js';
-import { env } from '../../config/env.js';
+import { dayKey } from '../../lib/dates.js';
 import { roundQty } from '../../lib/quantity.js';
-
-const dayKey = (date: Date) =>
-  new Intl.DateTimeFormat('en-CA', {
-    timeZone: env.APP_TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date);
 
 interface Filters {
   from: Date;

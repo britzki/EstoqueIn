@@ -3,7 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { Plus, Printer, Receipt as ReceiptIcon, Undo2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { useStoreSettings } from '../../lib/hooks';
+import { useStoreSettings, invalidateSaleData } from '../../lib/hooks';
 import { useToast } from '../../lib/toast';
 import { PAYMENT_LABEL, dayEndIso, dayStartIso, formatDateTime, formatMoney, formatNumber } from '../../lib/format';
 import type { Paginated, SaleDetail, SaleListItem } from '../../lib/types';
@@ -154,9 +154,7 @@ export function SaleModal({ saleId, onClose }: { saleId: string; onClose: () => 
     mutationFn: () => api.post<SaleDetail>(`/sales/${saleId}/cancel`, { reason }),
     onSuccess: () => {
       toast.success('Venda cancelada', 'Os itens voltaram ao estoque.');
-      for (const key of ['sales', 'sale', 'deliveries', 'products', 'product', 'alerts', 'dashboard', 'movements']) {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      }
+      invalidateSaleData(queryClient);
       setMode(null);
     },
   });

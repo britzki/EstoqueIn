@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { desktop } from '../lib/desktop';
-import { PAYMENT_LABEL, formatDateTime, formatMoney, formatNumber } from '../lib/format';
+import { useToast } from '../lib/toast';
+import { PAYMENT_LABEL, formatDateTime, formatNumber, formatMoneyPlain } from '../lib/format';
 import type { SaleDetail, StoreSettings } from '../lib/types';
 
-const money = (cents: number) => formatMoney(cents).replace('R$', '').trim();
+const money = formatMoneyPlain;
 
 /** Notinha de venda para impressora térmica de bobina (58 ou 80 mm). Não é documento fiscal. */
 export function Receipt({ sale, settings }: { sale: SaleDetail; settings: StoreSettings }) {
@@ -114,6 +115,7 @@ export function Receipt({ sale, settings }: { sale: SaleDetail; settings: StoreS
  * No programa desktop a impressão é direta (sem diálogo) se a impressora estiver configurada.
  */
 export function useSlipPrinter(settings: StoreSettings | undefined) {
+  const toast = useToast();
   const [content, setContent] = useState<ReactNode | null>(null);
 
   useEffect(() => {
@@ -121,14 +123,21 @@ export function useSlipPrinter(settings: StoreSettings | undefined) {
     // Espera o conteúdo aparecer na página antes de imprimir.
     const timer = setTimeout(async () => {
       try {
-        if (desktop) await desktop.printReceipt(settings.receiptWidth);
-        else window.print();
+        if (desktop) {
+          // Impressora desligada ou sem papel: avisa, em vez de o atendente achar que imprimiu.
+          const result = await desktop.printReceipt(settings.receiptWidth);
+          if (!result.ok && result.error && result.error !== 'cancelled') {
+            toast.error('Não foi possível imprimir', result.error);
+          }
+        } else window.print();
+      } catch (error) {
+        toast.error('Não foi possível imprimir', (error as Error).message);
       } finally {
         setContent(null);
       }
     }, 150);
     return () => clearTimeout(timer);
-  }, [content, settings]);
+  }, [content, settings, toast]);
 
   const print = useCallback((node: ReactNode) => setContent(node), []);
 

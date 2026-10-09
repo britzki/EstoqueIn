@@ -28,13 +28,21 @@ export function formatRelative(iso: string) {
   return days === 1 ? 'ontem' : `há ${days} dias`;
 }
 
-/** "12,50" → 1250. Retorna null para vazio ou inválido. */
+/**
+ * Valor digitado em reais para centavos: "12,50", "12.50" e "R$ 1.250,00" funcionam.
+ * Ponto seguido de 1 ou 2 dígitos (e sem vírgula) é decimal, como no teclado numérico;
+ * nos outros casos o ponto separa milhares. Retorna null para vazio ou inválido.
+ */
 export function parseMoneyInput(text: string): number | null {
-  const clean = text.replace(/[R$\s.]/g, '').replace(',', '.');
+  const raw = text.replace(/[R$\s]/g, '');
+  const clean = /^\d*\.\d{1,2}$/.test(raw) ? raw : raw.replace(/\./g, '').replace(',', '.');
   if (!clean) return null;
   const value = Number(clean);
   return Number.isFinite(value) && value >= 0 ? Math.round(value * 100) : null;
 }
+
+/** Valor sem o "R$", para as colunas dos comprovantes impressos ("12,50"). */
+export const formatMoneyPlain = (cents: number) => formatMoney(cents).replace('R$', '').trim();
 
 export const centsToInput = (cents: number) => (cents / 100).toFixed(2).replace('.', ',');
 
@@ -109,9 +117,6 @@ export const UNITS = ['UN', 'PCT', 'CX', 'SC', 'FD', 'KG', 'G', 'L', 'ML', 'M'];
 
 /** Unidades que, por padrão, são vendidas com casas decimais. */
 export const FRACTIONAL_UNITS = ['KG', 'G', 'L', 'ML', 'M'];
-
-/** Passo e mínimo dos campos de quantidade: 0,001 para produtos fracionados, 1 para os demais. */
-export const quantityStep = (fractional?: boolean) => (fractional ? 0.001 : 1);
 
 /** Arredonda para 3 casas, eliminando resíduos de ponto flutuante em contas feitas na tela. */
 export const roundQty = (value: number) => Math.round((value + Number.EPSILON) * 1000) / 1000;

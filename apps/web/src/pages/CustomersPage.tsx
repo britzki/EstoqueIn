@@ -388,6 +388,9 @@ function CustomerFormModal({ customer, onClose }: { customer: Customer | null; o
     openingBalance: customer?.openingBalanceCents ? centsToInput(customer.openingBalanceCents) : '',
   });
   const { creditLimit, openingBalance, ...fields } = form;
+  // Valor digitado errado não pode virar "sem limite" nem apagar o fiado do caderno.
+  const limitInvalid = creditLimit.trim() !== '' && parseMoneyInput(creditLimit) === null;
+  const openingInvalid = openingBalance.trim() !== '' && parseMoneyInput(openingBalance) === null;
   const body = {
     ...fields,
     ...(canSetLimit && {
@@ -434,7 +437,11 @@ function CustomerFormModal({ customer, onClose }: { customer: Customer | null; o
           <Button variant="ghost" onClick={onClose}>
             Cancelar
           </Button>
-          <Button loading={save.isPending} disabled={form.name.trim().length < 2} onClick={() => save.mutate()}>
+          <Button
+            loading={save.isPending}
+            disabled={form.name.trim().length < 2 || (canSetLimit && (limitInvalid || openingInvalid))}
+            onClick={() => save.mutate()}
+          >
             Salvar
           </Button>
         </>
@@ -461,7 +468,7 @@ function CustomerFormModal({ customer, onClose }: { customer: Customer | null; o
           <Field
             label="Limite de fiado (R$)"
             hint="Deixe em branco para não ter limite. A venda que passar do limite é recusada no caixa."
-            error={errors.creditLimitCents?.[0]}
+            error={limitInvalid ? 'Valor inválido' : errors.creditLimitCents?.[0]}
           >
             {(id) => (
               <Input
@@ -478,7 +485,7 @@ function CustomerFormModal({ customer, onClose }: { customer: Customer | null; o
           <Field
             label="Fiado anterior, do caderno (R$)"
             hint="O que o cliente já devia antes de usar o sistema. Entra no saldo do fiado e pode ser pago normalmente."
-            error={errors.openingBalanceCents?.[0]}
+            error={openingInvalid ? 'Valor inválido' : errors.openingBalanceCents?.[0]}
           >
             {(id) => (
               <Input

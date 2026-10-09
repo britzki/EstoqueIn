@@ -7,7 +7,8 @@ import { can } from '../../auth/permissions.js';
 import { getSalesReport } from '../sales/sales.report.js';
 import { getPurchaseSuggestion, getStaleProducts } from './purchasing.report.js';
 import { getMonthlyReport } from './monthly.report.js';
-import { canSeeFinancials } from '../../lib/visibility.js';
+import { canSeeFinancials, movementsWithoutCost } from '../../lib/visibility.js';
+import { dayKey, localDateTime } from '../../lib/dates.js';
 import { getAbcCurve, getDashboard, getMovementSummary, getStockPosition } from './reports.service.js';
 
 export const dashboardRoutes = Router();
@@ -19,7 +20,11 @@ dashboardRoutes.get('/', async (req, res) => {
     res.json(dashboard);
     return;
   }
-  res.json({ ...dashboard, totals: { ...dashboard.totals, stockValueCents: null, salesToday: null } });
+  res.json({
+    ...dashboard,
+    totals: { ...dashboard.totals, stockValueCents: null, salesToday: null },
+    recentMovements: movementsWithoutCost(req, dashboard.recentMovements),
+  });
 });
 
 reportsRoutes.use(requirePermission('reports:read'));
@@ -121,7 +126,7 @@ reportsRoutes.get('/sales', async (req, res) => {
   if (filters.format === 'csv') {
     const csv = toCsv(report.sales, [
       { header: 'Venda', value: (r) => r.number },
-      { header: 'Data', value: (r) => r.createdAt.toISOString() },
+      { header: 'Data', value: (r) => localDateTime(r.createdAt) },
       { header: 'Itens', value: (r) => r.items },
       { header: 'Desconto', value: (r) => centsToDecimal(r.discountCents) },
       { header: 'Total', value: (r) => centsToDecimal(r.totalCents) },
@@ -210,7 +215,7 @@ reportsRoutes.get('/stale-products', async (req, res) => {
       { header: 'Categoria', value: (r) => r.category },
       { header: 'Saldo', value: (r) => r.quantity },
       { header: 'Valor parado', value: (r) => centsToDecimal(r.valueCents) },
-      { header: 'Última saída', value: (r) => r.lastExitAt?.toISOString().slice(0, 10) ?? 'Nunca' },
+      { header: 'Última saída', value: (r) => (r.lastExitAt ? dayKey(r.lastExitAt) : 'Nunca') },
     ]);
     sendCsv(res, 'produtos-parados.csv', csv);
     return;

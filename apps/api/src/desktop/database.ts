@@ -116,6 +116,36 @@ export function isSqliteFile(file: string) {
   return header.toString('latin1') === 'SQLite format 3\0';
 }
 
+/**
+ * Confere um backup antes de restaurar: precisa ser um banco do EstoqueIn, íntegro e de uma versão
+ * que este programa conhece. Devolve a mensagem para o usuário, ou null se pode restaurar.
+ * Sem isso, restaurar o banco de outro programa abriria o sistema vazio, e um backup de versão mais
+ * nova deixaria o programa sem conseguir abrir.
+ */
+export async function checkBackupFile(file: string, migrationsDir: string): Promise<string | null> {
+  if (!isSqliteFile(file)) return 'O arquivo escolhido não é um backup do EstoqueIn.';
+  await prisma.$executeRawUnsafe('ATTACH DATABASE ? AS candidate', file);
+  try {
+    const [check] = await prisma.$queryRawUnsafe<Array<{ quick_check: string }>>('PRAGMA candidate.quick_check');
+    if (check?.quick_check !== 'ok') return 'O backup está danificado e não pode ser restaurado.';
+    const tables = await prisma.$queryRawUnsafe<unknown[]>(
+      `SELECT "name" FROM candidate.sqlite_master WHERE "type" = 'table' AND "name" = ?`,
+      MIGRATIONS_TABLE,
+    );
+    if (tables.length === 0) return 'O arquivo escolhido não é um backup do EstoqueIn.';
+    const applied = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+      `SELECT "name" FROM candidate."${MIGRATIONS_TABLE}"`,
+    );
+    const known = new Set(readdirSync(migrationsDir));
+    if (applied.some((row) => !known.has(row.name))) {
+      return 'Este backup é de uma versão mais nova do EstoqueIn. Atualize o programa antes de restaurar.';
+    }
+    return null;
+  } finally {
+    await prisma.$executeRawUnsafe('DETACH DATABASE candidate');
+  }
+}
+
 const AUTO_PREFIX = 'estoquein-auto-';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
