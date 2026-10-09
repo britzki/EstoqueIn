@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { useActiveWarehouses, useSuppliers } from '../../lib/hooks';
+import { invalidateStock, useActiveWarehouses, useSuppliers } from '../../lib/hooks';
 import { useToast } from '../../lib/toast';
 import { ALERT_LABEL, formatMoney, formatNumber, parseMoneyInput, roundQty } from '../../lib/format';
 import type { FractionResult, MovementResult, Product, ProductDetail, TransferResult } from '../../lib/types';
@@ -33,6 +33,7 @@ import {
 import { FlowResult } from './FlowResult';
 
 type Kind = 'entry' | 'exit' | 'transfer' | 'adjustment' | 'fraction';
+const KINDS: Kind[] = ['entry', 'exit', 'transfer', 'fraction', 'adjustment'];
 
 const EXIT_REASONS = ['Venda', 'Consumo interno', 'Avaria', 'Vencimento', 'Devolução ao fornecedor'];
 
@@ -78,7 +79,11 @@ export function NewMovementPage() {
   const { data: warehouses = [] } = useActiveWarehouses();
   const { data: suppliers = [] } = useSuppliers();
 
-  const [kind, setKind] = useState<Kind>((params.get('type') as Kind) ?? 'entry');
+  // Aba pedida no link (?type=...), se existir e o perfil puder usar; senão, Entrada.
+  const [kind, setKind] = useState<Kind>(() => {
+    const requested = KINDS.find((value) => value === params.get('type'));
+    return requested && (requested !== 'adjustment' || can('stock:adjust')) ? requested : 'entry';
+  });
   const [product, setProduct] = useState<Product | null>(null);
   const [form, setForm] = useState({ ...initialForm, warehouseId: params.get('warehouseId') ?? '' });
   const [last, setLast] = useState<LastResult | null>(null);
@@ -86,21 +91,15 @@ export function NewMovementPage() {
   const set = (field: keyof typeof form) => (value: string) => setForm((current) => ({ ...current, [field]: value }));
 
   // Pré-seleciona o produto vindo de links como "Movimentar", "Repor" ou "Abrir pacote".
-  const initialProductId = params.get('productId');
-  const { data: initialProduct } = useQuery({
-    queryKey: ['product', initialProductId],
-    queryFn: () => api.get<ProductDetail>(`/products/${initialProductId}`),
-    enabled: Boolean(initialProductId),
-  });
+  const { data: initialProduct } = useProductDetail(params.get('productId') ?? undefined);
   const [appliedInitial, setAppliedInitial] = useState(false);
   if (initialProduct && !appliedInitial) {
     setAppliedInitial(true);
     setProduct(initialProduct);
   }
 
-  useEffect(() => {
-    if (!form.warehouseId && warehouses.length) setForm((current) => ({ ...current, warehouseId: warehouses[0].id }));
-  }, [warehouses, form.warehouseId]);
+  // Sem escolha, o primeiro estoque ativo.
+  const warehouseId = form.warehouseId || warehouses[0]?.id || '';
 
   const detail = useProductDetail(product?.id);
   const stockIn = (warehouseId: string) => detail.data?.stock.find((s) => s.warehouse.id === warehouseId);
@@ -117,100 +116,109 @@ export function NewMovementPage() {
   const bulkDetail = useProductDetail(kind === 'fraction' ? bulkId : undefined);
   const pack = packDetail.data;
   const bulk = bulkDetail.data;
-  const packStock = pack?.stock.find((s) => s.warehouse.id === form.warehouseId);
-  const bulkStock = bulk?.stock.find((s) => s.warehouse.id === form.warehouseId);
+  const packStock = pack?.stock.find((s) => s.warehouse.id === warehouseId);
+  const bulkStock = bulk?.stock.find((s) => s.warehouse.id === warehouseId);
   const yieldPerPack = Number(form.yieldPerPack.replace(',', '.')) || bulk?.sourceYield || 0;
   const packs = Number(form.quantity);
   const bulkQuantity = roundQty(packs * yieldPerPack);
 
-  const mutation = useMutation({
-    mutationFn: async (): Promise<LastResult> => {
-      const productId = product!.id;
-      const quantity = Number(form.quantity);
-      const minOf = (warehouseId: string) => stockIn(warehouseId)?.effectiveMin ?? 0;
-      const flow = (result: MovementResult, warehouseId: string) => ({
-        result,
-        warehouseName: warehouseName(warehouseId),
-        min: minOf(warehouseId),
-        unit: product!.unit,
-      });
+  // Cada aba envia para o seu endereço; o resultado volta no mesmo formato para a tela de confirmação.
+  const submitFraction = async (): Promise<LastResult> => {
+    const result = await api.post<FractionResult>('/stock/fractions', {
+      bulkProductId: bulk!.id,
+      warehouseId,
+      packs: Number(form.quantity),
+      yieldPerPack,
+    });
+    const name = warehouseName(warehouseId);
+    return {
+      kind,
+      productName: `${result.pack.name} → ${formatNumber(result.bulkQuantity)} ${result.bulk.unit} a granel`,
+      flows: [
+        {
+          label: 'Pacote',
+          result: result.from,
+          warehouseName: name,
+          min: packStock?.effectiveMin ?? 0,
+          unit: result.pack.unit,
+        },
+        {
+          label: 'Granel',
+          result: result.to,
+          warehouseName: name,
+          min: bulkStock?.effectiveMin ?? 0,
+          unit: result.bulk.unit,
+        },
+      ],
+    };
+  };
 
-      if (kind === 'fraction') {
-        const result = await api.post<FractionResult>('/stock/fractions', {
-          bulkProductId: bulk!.id,
-          warehouseId: form.warehouseId,
-          packs: quantity,
-          yieldPerPack,
-          reason: form.reason,
-        });
-        const name = warehouseName(form.warehouseId);
-        return {
-          kind,
-          productName: `${result.pack.name} → ${formatNumber(result.bulkQuantity)} ${result.bulk.unit} a granel`,
-          flows: [
-            {
-              label: 'Pacote',
-              result: result.from,
-              warehouseName: name,
-              min: packStock?.effectiveMin ?? 0,
-              unit: result.pack.unit,
-            },
-            {
-              label: 'Granel',
-              result: result.to,
-              warehouseName: name,
-              min: bulkStock?.effectiveMin ?? 0,
-              unit: result.bulk.unit,
-            },
-          ],
-        };
-      }
+  /** Saldo e mínimo de um estoque, para a confirmação e os avisos de estoque baixo. */
+  const flow = (result: MovementResult, inWarehouse: string) => ({
+    result,
+    warehouseName: warehouseName(inWarehouse),
+    min: stockIn(inWarehouse)?.effectiveMin ?? 0,
+    unit: product!.unit,
+  });
 
-      if (kind === 'transfer') {
-        const result = await api.post<TransferResult>('/stock/transfers', {
+  const submitTransfer = async (): Promise<LastResult> => {
+    const result = await api.post<TransferResult>('/stock/transfers', {
+      productId: product!.id,
+      fromWarehouseId: warehouseId,
+      toWarehouseId: form.toWarehouseId,
+      quantity: Number(form.quantity),
+      reason: form.reason,
+    });
+    return {
+      kind,
+      productName: product!.name,
+      flows: [
+        { label: 'Origem', ...flow(result.from, warehouseId) },
+        { label: 'Destino', ...flow(result.to, form.toWarehouseId) },
+      ],
+    };
+  };
+
+  /** Entrada, saída e ajuste: uma movimentação num estoque só. */
+  const submitSingle = async (): Promise<LastResult> => {
+    const productId = product!.id;
+    const quantity = Number(form.quantity);
+    let result: MovementResult;
+    switch (kind) {
+      case 'entry':
+        result = await api.post<MovementResult>('/stock/entries', {
           productId,
-          fromWarehouseId: form.warehouseId,
-          toWarehouseId: form.toWarehouseId,
+          warehouseId,
           quantity,
+          unitCostCents: parseMoneyInput(form.unitCost),
+          supplierId: form.supplierId,
+          documentRef: form.documentRef,
           reason: form.reason,
         });
-        return {
-          kind,
-          productName: product!.name,
-          flows: [
-            { label: 'Origem', ...flow(result.from, form.warehouseId) },
-            { label: 'Destino', ...flow(result.to, form.toWarehouseId) },
-          ],
-        };
-      }
+        break;
+      case 'exit':
+        result = await api.post<MovementResult>('/stock/exits', {
+          productId,
+          warehouseId,
+          quantity,
+          documentRef: form.documentRef,
+          reason: form.reason || 'Venda',
+        });
+        break;
+      default:
+        result = await api.post<MovementResult>('/stock/adjustments', {
+          productId,
+          warehouseId,
+          newQuantity: Number(form.newQuantity),
+          reason: form.reason,
+        });
+    }
+    return { kind, productName: product!.name, flows: [flow(result, warehouseId)] };
+  };
 
-      const request =
-        kind === 'entry'
-          ? api.post<MovementResult>('/stock/entries', {
-              productId,
-              warehouseId: form.warehouseId,
-              quantity,
-              unitCostCents: parseMoneyInput(form.unitCost),
-              supplierId: form.supplierId,
-              documentRef: form.documentRef,
-              reason: form.reason,
-            })
-          : kind === 'exit'
-            ? api.post<MovementResult>('/stock/exits', {
-                productId,
-                warehouseId: form.warehouseId,
-                quantity,
-                documentRef: form.documentRef,
-                reason: form.reason || 'Venda',
-              })
-            : api.post<MovementResult>('/stock/adjustments', {
-                productId,
-                warehouseId: form.warehouseId,
-                newQuantity: Number(form.newQuantity),
-                reason: form.reason,
-              });
-      return { kind, productName: product!.name, flows: [flow(await request, form.warehouseId)] };
-    },
+  const mutation = useMutation({
+    mutationFn: () =>
+      kind === 'fraction' ? submitFraction() : kind === 'transfer' ? submitTransfer() : submitSingle(),
     onSuccess: (result) => {
       setLast(result);
       toast.success('Movimentação registrada', result.productName);
@@ -222,9 +230,7 @@ export function NewMovementPage() {
           );
         }
       }
-      for (const key of ['products', 'product', 'alerts', 'dashboard', 'movements', 'warehouses']) {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      }
+      invalidateStock(queryClient);
       // Pronto para o próximo bipe.
       setProduct(null);
       setForm((current) => ({
@@ -256,7 +262,7 @@ export function NewMovementPage() {
     ...(can('stock:adjust') ? [{ value: 'adjustment' as const, label: 'Ajuste', icon: <SlidersHorizontal /> }] : []),
   ];
 
-  const origin = stockIn(form.warehouseId);
+  const origin = stockIn(warehouseId);
   const fractionReady = kind !== 'fraction' || Boolean(pack && bulk);
   const noBulkLink = kind === 'fraction' && product && detail.data && !selectedIsBulk && bulkOptions.length === 0;
 
@@ -274,6 +280,8 @@ export function NewMovementPage() {
               value={kind}
               onChange={(value) => {
                 setKind(value);
+                // O motivo de uma aba (ex.: o do ajuste) não vale para a outra.
+                setForm((current) => ({ ...current, reason: '' }));
                 mutation.reset();
               }}
               options={tabs}
@@ -349,12 +357,7 @@ export function NewMovementPage() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label={kind === 'transfer' ? 'Estoque de origem' : 'Estoque'} required>
                 {(id) => (
-                  <Select
-                    id={id}
-                    value={form.warehouseId}
-                    onChange={(e) => set('warehouseId')(e.target.value)}
-                    required
-                  >
+                  <Select id={id} value={warehouseId} onChange={(e) => set('warehouseId')(e.target.value)} required>
                     {warehouses.map((w) => (
                       <option key={w.id} value={w.id}>
                         {w.name}
@@ -389,7 +392,7 @@ export function NewMovementPage() {
                     >
                       <option value="">Selecione</option>
                       {warehouses
-                        .filter((w) => w.id !== form.warehouseId)
+                        .filter((w) => w.id !== warehouseId)
                         .map((w) => (
                           <option key={w.id} value={w.id}>
                             {w.name}

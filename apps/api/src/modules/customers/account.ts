@@ -3,7 +3,10 @@ import { prisma, type Tx } from '../../lib/prisma.js';
 import { notFound, unprocessable } from '../../lib/errors.js';
 import { id, optionalText, positiveInt } from '../../lib/validation.js';
 import { formatCents } from '../../lib/money.js';
-import { getStoreSettings } from '../settings/settings.routes.js';
+import { getStoreSettings } from '../settings/settings.service.js';
+import { findOpenCashSession } from '../cash/cash.service.js';
+import { receivingMethodSchema } from '../../lib/payments.js';
+import { calendarDay } from '../../lib/dates.js';
 
 /**
  * Fiado (conta do cliente). O saldo nunca é gravado: é sempre recalculado a partir de
@@ -13,8 +16,6 @@ import { getStoreSettings } from '../settings/settings.routes.js';
  *   − pagamentos recebidos.
  * Assim, cancelar uma venda ou devolver um item já corrige a dívida sozinho.
  */
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface AccountEntry {
   date: Date;
@@ -65,7 +66,9 @@ async function loadEntries(client: Tx, customerIds?: string[]) {
   const entries = new Map<string, Omit<AccountEntry, 'balanceCents'>[]>();
   const push = (customerId: string | null, entry: Omit<AccountEntry, 'balanceCents'>) => {
     if (!customerId) return;
-    entries.set(customerId, [...(entries.get(customerId) ?? []), entry]);
+    const list = entries.get(customerId);
+    if (list) list.push(entry);
+    else entries.set(customerId, [entry]);
   };
   for (const customer of opening) {
     push(customer.id, {
@@ -172,7 +175,7 @@ export async function listDebtors() {
     where: { id: { in: [...entries.keys()] } },
     select: { id: true, name: true, phone: true, creditLimitCents: true },
   });
-  const now = Date.now();
+  const today = new Date();
   const debtors = customers
     .map((customer) => {
       const { balanceCents, openSince, entries: list } = buildStatement(entries.get(customer.id) ?? []);
@@ -181,7 +184,8 @@ export async function listDebtors() {
         customer,
         balanceCents,
         openSince,
-        daysOpen: openSince ? Math.floor((now - openSince.getTime()) / DAY_MS) : null,
+        // Dias de calendário: a dívida de ontem à noite aparece como "1 dia", não "hoje".
+        daysOpen: openSince ? calendarDay(today) - calendarDay(openSince) : null,
         lastPaymentAt: lastPayment,
       };
     })
@@ -221,7 +225,7 @@ export async function assertAccountSale(
 
 export const accountPaymentSchema = z.object({
   amountCents: positiveInt,
-  method: z.enum(['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER']),
+  method: receivingMethodSchema,
   /** Caixa onde o dinheiro entra (o estoque de onde a loja vende). */
   warehouseId: id.optional(),
   notes: optionalText(160),
@@ -247,9 +251,7 @@ export async function receiveAccountPayment(
     }
 
     const settings = await getStoreSettings(tx);
-    const cashSession = input.warehouseId
-      ? await tx.cashSession.findFirst({ where: { warehouseId: input.warehouseId, status: 'OPEN' } })
-      : await tx.cashSession.findFirst({ where: { status: 'OPEN' }, orderBy: { openedAt: 'desc' } });
+    const cashSession = await findOpenCashSession(tx, input.warehouseId);
     if (input.method === 'CASH' && settings.requireCashSession && !cashSession) {
       throw unprocessable('O caixa está fechado. Abra o caixa para receber em dinheiro.', 'CASH_CLOSED');
     }

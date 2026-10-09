@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { AppError } from '../../lib/errors.js';
-import { permissionsFor } from '../../auth/permissions.js';
+import { emailSchema, hashPassword, passwordSchema } from '../../auth/passwords.js';
+import { toSession } from '../../auth/session.js';
 import { signToken } from '../../auth/tokens.js';
 import { DEMO_ACCOUNTS, loadDemoData } from './demo-data.js';
 
@@ -16,8 +16,8 @@ export const setupRoutes = Router();
 const freshSchema = z.object({
   mode: z.literal('fresh'),
   name: z.string().trim().min(2, 'Informe seu nome').max(120),
-  email: z.string().trim().toLowerCase().pipe(z.email('E-mail inválido')),
-  password: z.string().min(8, 'A senha deve ter pelo menos 8 caracteres').max(72),
+  email: emailSchema,
+  password: passwordSchema(),
   warehouseName: z.string().trim().min(2, 'Informe o nome do estoque').max(100).default('Estoque principal'),
 });
 
@@ -71,7 +71,7 @@ setupRoutes.post('/', async (req, res) => {
           name: input.name,
           email: input.email,
           role: 'ADMIN',
-          passwordHash: await bcrypt.hash(input.password, 10),
+          passwordHash: await hashPassword(input.password),
         },
       });
       if ((await tx.warehouse.count()) === 0) {
@@ -81,12 +81,7 @@ setupRoutes.post('/', async (req, res) => {
     });
 
     // Já devolve a sessão: o administrador entra direto no sistema.
-    res.status(201).json({
-      mode: 'fresh',
-      token: signToken(user.id),
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
-      permissions: permissionsFor(user.role),
-    });
+    res.status(201).json({ mode: 'fresh', token: signToken(user), ...toSession(user) });
   } finally {
     running = false;
   }

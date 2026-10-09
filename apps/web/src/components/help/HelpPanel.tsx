@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router';
 import { BookOpen, X } from 'lucide-react';
 import { articlesForRoute } from '../../lib/help';
+import { useEscapeKey } from '../../lib/hooks';
 import { HelpAssistant } from './HelpAssistant';
 
 /**
@@ -12,12 +12,7 @@ export function HelpPanel({ open, onClose }: { open: boolean; onClose: () => voi
   const { pathname } = useLocation();
   const local = articlesForRoute(pathname).slice(0, 4);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  useEscapeKey(open, onClose);
 
   if (!open) return null;
 

@@ -27,7 +27,7 @@ const promotionSchema = z
 const include = { product: { select: { id: true, sku: true, name: true, unit: true, priceCents: true } } } as const;
 
 /** Texto curto da promoção, usado no registro de alterações e na tela. */
-export function describePromotion(promotion: {
+function describePromotion(promotion: {
   type: string;
   priceCents: number | null;
   buyQuantity: number | null;

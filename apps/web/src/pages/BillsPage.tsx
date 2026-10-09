@@ -6,7 +6,16 @@ import { cn } from '../lib/cn';
 import { useAuth } from '../lib/auth';
 import { useSaleWarehouse, useSuppliers } from '../lib/hooks';
 import { useToast } from '../lib/toast';
-import { PAYMENT_LABEL, centsToInput, formatDate, formatMoney, parseMoneyInput, toDateInput } from '../lib/format';
+import {
+  PAYMENT_LABEL,
+  centsToInput,
+  dueDay,
+  formatDate,
+  formatDueDay,
+  formatMoney,
+  parseMoneyInput,
+  toDateInput,
+} from '../lib/format';
 import type { Bill, Paginated, PaymentMethod } from '../lib/types';
 import {
   Badge,
@@ -33,7 +42,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const PAY_METHODS: Array<Exclude<PaymentMethod, 'ACCOUNT'>> = ['PIX', 'CASH', 'DEBIT', 'CREDIT', 'OTHER'];
 
 /** Data do vencimento sem fuso: o dia que a pessoa escolheu. */
-const dueDay = (iso: string) => new Date(iso).toISOString().slice(0, 10);
 const todayInput = () => toDateInput(new Date());
 
 /** Situação do vencimento em palavras, para a coluna da lista. */
@@ -138,7 +146,7 @@ export function BillsPage() {
                           </>
                         ) : (
                           <>
-                            {formatDate(`${dueDay(bill.dueDate)}T12:00:00`)}
+                            {formatDueDay(bill.dueDate)}
                             {status === 'OPEN' && (
                               <span className="block">
                                 <Badge tone={due.tone}>{due.text}</Badge>
@@ -353,7 +361,7 @@ function PayBillModal({ bill, onClose }: { bill: Bill; onClose: () => void }) {
     onSuccess: (paid) => {
       toast.success(
         'Conta paga',
-        paid.next ? `A próxima foi lançada para ${formatDate(`${dueDay(paid.next.dueDate)}T12:00:00`)}.` : undefined,
+        paid.next ? `A próxima foi lançada para ${formatDueDay(paid.next.dueDate)}.` : undefined,
       );
       for (const key of ['bills', 'cash']) queryClient.invalidateQueries({ queryKey: [key] });
       onClose();

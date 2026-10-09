@@ -1,3 +1,4 @@
+import { MovementType } from '@prisma/client';
 import { z } from 'zod';
 import { id, nonNegativeInt, optionalId, optionalText, positiveInt } from '../../lib/validation.js';
 import { nonNegativeQty, positiveQty } from '../../lib/quantity.js';
@@ -46,23 +47,11 @@ export const fractionSchema = z.object({
   reason: optionalText(255),
 });
 
-export const movementTypes = [
-  'ENTRY',
-  'EXIT',
-  'TRANSFER_IN',
-  'TRANSFER_OUT',
-  'ADJUSTMENT',
-  'FRACTION_OUT',
-  'FRACTION_IN',
-  'SALE_CANCEL',
-  'SALE_RETURN',
-] as const;
-
 export const movementFiltersSchema = paginationSchema.extend({
   productId: z.string().optional(),
   warehouseId: z.string().optional(),
   userId: z.string().optional(),
-  type: z.enum(movementTypes).optional(),
+  type: z.enum(MovementType).optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
   format: z.enum(['json', 'csv']).default('json'),

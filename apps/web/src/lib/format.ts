@@ -2,6 +2,7 @@ import type { AlertType, MovementType, PaymentMethod, Role } from './types';
 
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const number = new Intl.NumberFormat('pt-BR');
+const percent = new Intl.NumberFormat('pt-BR', { style: 'percent', maximumFractionDigits: 1 });
 const compactMoney = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
@@ -12,8 +13,7 @@ const compactMoney = new Intl.NumberFormat('pt-BR', {
 export const formatMoney = (cents: number) => money.format(cents / 100);
 export const formatCompactMoney = (cents: number) => compactMoney.format(cents / 100);
 export const formatNumber = (value: number) => number.format(value);
-export const formatPercent = (value: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'percent', maximumFractionDigits: 1 }).format(value);
+export const formatPercent = (value: number) => percent.format(value);
 
 export const formatDate = (iso: string) => new Date(iso).toLocaleDateString('pt-BR');
 export const formatDateTime = (iso: string) =>
@@ -43,6 +43,12 @@ export function parseMoneyInput(text: string): number | null {
 
 /** Valor sem o "R$", para as colunas dos comprovantes impressos ("12,50"). */
 export const formatMoneyPlain = (cents: number) => formatMoney(cents).replace('R$', '').trim();
+
+/**
+ * Vencimento de conta: gravado ao meio-dia do dia escolhido. "AAAA-MM-DD" do vencimento e a data por extenso.
+ */
+export const dueDay = (iso: string) => new Date(iso).toISOString().slice(0, 10);
+export const formatDueDay = (iso: string) => formatDate(`${dueDay(iso)}T12:00:00`);
 
 export const centsToInput = (cents: number) => (cents / 100).toFixed(2).replace('.', ',');
 
@@ -86,6 +92,16 @@ export const ALERT_LABEL: Record<AlertType, string> = {
   NEGATIVE_STOCK: 'Estoque negativo',
 };
 
+/** Formas de pagamento na ordem das telas; sem o fiado, as que recebem dinheiro na hora. */
+export const PAYMENT_METHODS: PaymentMethod[] = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER', 'ACCOUNT'];
+export const RECEIVING_METHODS = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER'] as const satisfies PaymentMethod[];
+
+export const INVENTORY_STATUS = {
+  OPEN: { label: 'Em contagem', tone: 'blue' },
+  COMPLETED: { label: 'Concluído', tone: 'green' },
+  CANCELLED: { label: 'Cancelado', tone: 'gray' },
+} as const;
+
 export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   CASH: 'Dinheiro',
   PIX: 'Pix',
@@ -94,6 +110,9 @@ export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   OTHER: 'Outro',
   ACCOUNT: 'Fiado',
 };
+
+/** Primeiro nome, para as mensagens ("Olá, Maria!"). */
+export const firstName = (name: string) => name.split(' ')[0];
 
 /** Link do WhatsApp para o número (só dígitos, com DDD). */
 export const whatsappLink = (phone: string, text: string) =>

@@ -24,7 +24,7 @@ export function toCsv<T>(rows: T[], columns: CsvColumn<T>[]) {
     columns.map((column) => escape(column.header)).join(';'),
     ...rows.map((row) => columns.map((column) => escape(column.value(row))).join(';')),
   ];
-  return '﻿' + lines.join('\r\n');
+  return '\uFEFF' + lines.join('\r\n');
 }
 
 export function sendCsv(res: Response, filename: string, content: string) {

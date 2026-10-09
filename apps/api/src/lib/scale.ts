@@ -18,6 +18,12 @@ export interface ScaleLabel {
 }
 
 const VALUE_DIGITS = 5;
+/** Posição em que começa o valor (peso ou preço) na etiqueta de 13 dígitos. */
+const VALUE_START = 12 - VALUE_DIGITS;
+
+/** Prefixo + código do produto cabem antes do valor na etiqueta? */
+export const scaleConfigFits = (scalePrefix: string, scaleCodeDigits: number) =>
+  scalePrefix.length + scaleCodeDigits <= VALUE_START;
 
 /** Compara códigos ignorando zeros à esquerda ("000123" = "123"). */
 export const normalizeScaleCode = (code: string) => code.replace(/^0+(?=\d)/, '');
@@ -33,11 +39,10 @@ export function parseScaleLabel(barcode: string, config: ScaleConfig): ScaleLabe
 
   const codeStart = config.scalePrefix.length;
   const codeEnd = codeStart + config.scaleCodeDigits;
-  const valueStart = 12 - VALUE_DIGITS;
-  if (codeEnd > valueStart) return null;
+  if (codeEnd > VALUE_START) return null;
 
   const scaleCode = normalizeScaleCode(barcode.slice(codeStart, codeEnd));
-  const value = Number(barcode.slice(valueStart, 12));
+  const value = Number(barcode.slice(VALUE_START, 12));
   if (value <= 0) return null;
 
   return config.scaleValueType === 'PRICE' ? { scaleCode, totalCents: value } : { scaleCode, weightKg: value / 1000 };

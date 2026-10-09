@@ -9,7 +9,8 @@ import { Button, DecimalInput, Field, Modal } from '../../components/ui';
 /** Etiquetas de gôndola: nome, preço e código de barras, impressas via window.print(). */
 export function LabelPrintModal({ product, onClose }: { product: Product & { barcode: string }; onClose: () => void }) {
   const [copies, setCopies] = useState(6);
-  const count = Math.min(Math.max(copies || 1, 1), 60);
+  // Quantidade de etiquetas é sempre inteira (de 1 a 60).
+  const count = Math.min(Math.max(Math.floor(copies) || 1, 1), 60);
 
   const label = (
     <div

@@ -1046,11 +1046,11 @@ const STOPWORDS = new Set(
 );
 
 /** Minúsculas, sem acento e sem pontuação. */
-export const normalize = (text: string) =>
+const normalize = (text: string) =>
   text
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9\s]/g, ' ');
 
 const tokenize = (text: string) =>

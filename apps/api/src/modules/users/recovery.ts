@@ -1,7 +1,7 @@
 import { randomInt } from 'node:crypto';
-import bcrypt from 'bcryptjs';
 import { prisma } from '../../lib/prisma.js';
 import { recordAudit } from '../../lib/audit.js';
+import { hashPassword } from '../../auth/passwords.js';
 
 // Sem caracteres que se confundem (0/O, 1/l/I) para a senha ser fácil de digitar.
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
@@ -24,7 +24,13 @@ export async function resetAdminPassword(origin = 'menu do programa') {
   const password = temporaryPassword();
   await prisma.user.update({
     where: { id: admin.id },
-    data: { passwordHash: await bcrypt.hash(password, 10), mustChangePassword: true, active: true },
+    // A versão nova do login derruba qualquer sessão aberta com a senha antiga.
+    data: {
+      passwordHash: await hashPassword(password),
+      mustChangePassword: true,
+      active: true,
+      tokenVersion: { increment: 1 },
+    },
   });
   await recordAudit(
     { name: 'Recuperação de acesso' },

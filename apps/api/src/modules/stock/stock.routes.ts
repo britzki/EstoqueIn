@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { canSeeFinancials, movementsWithoutCost } from '../../lib/visibility.js';
 import { localDateTime } from '../../lib/dates.js';
-import type { Prisma } from '@prisma/client';
+import type { MovementType, Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { currentUser, requirePermission } from '../../middleware/auth.js';
 import { paginated, toSkipTake } from '../../lib/pagination.js';
@@ -18,7 +18,7 @@ import {
 
 export const stockRoutes = Router();
 
-const MOVEMENT_LABELS: Record<string, string> = {
+const MOVEMENT_LABELS: Record<MovementType, string> = {
   ENTRY: 'Entrada',
   EXIT: 'Saída',
   TRANSFER_IN: 'Transferência (entrada)',

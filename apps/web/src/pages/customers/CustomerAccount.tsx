@@ -1,12 +1,21 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { HandCoins, MessageCircle, NotebookPen } from 'lucide-react';
+import { HandCoins, NotebookPen } from 'lucide-react';
+import { WhatsAppChip } from '../../components/WhatsAppChip';
 import { api } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { useAuth } from '../../lib/auth';
 import { useSaleWarehouse, useStoreSettings } from '../../lib/hooks';
 import { useToast } from '../../lib/toast';
-import { PAYMENT_LABEL, formatDate, formatMoney, formatPhone, parseMoneyInput, whatsappLink } from '../../lib/format';
+import {
+  PAYMENT_LABEL,
+  RECEIVING_METHODS,
+  formatDate,
+  formatMoney,
+  formatPhone,
+  parseMoneyInput,
+  firstName,
+} from '../../lib/format';
 import type { AccountStatement, Customer, Debtor, PaymentMethod } from '../../lib/types';
 import {
   Badge,
@@ -22,10 +31,6 @@ import {
   Th,
 } from '../../components/ui';
 
-const RECEIVE_METHODS: Array<Exclude<PaymentMethod, 'ACCOUNT'>> = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER'];
-
-const firstName = (name: string) => name.split(' ')[0];
-
 /** Mensagem de cobrança educada, com o valor em aberto. */
 const chargeMessage = (name: string, balanceCents: number, storeName?: string) =>
   `Olá, ${firstName(name)}! Aqui é da ${storeName ?? 'loja'}. Passando para lembrar do fiado em aberto de ` +
@@ -33,18 +38,7 @@ const chargeMessage = (name: string, balanceCents: number, storeName?: string) =
 
 function ChargeButton({ name, phone, balanceCents }: { name: string; phone: string | null; balanceCents: number }) {
   const { data: settings } = useStoreSettings();
-  if (!phone) return <span className="text-xs text-slate-400">sem telefone</span>;
-  return (
-    <a
-      href={whatsappLink(phone, chargeMessage(name, balanceCents, settings?.storeName))}
-      target="_blank"
-      rel="noreferrer"
-      onClick={(event) => event.stopPropagation()}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium whitespace-nowrap text-emerald-800 hover:bg-emerald-100"
-    >
-      <MessageCircle className="size-3.5" /> Cobrar
-    </a>
-  );
+  return <WhatsAppChip phone={phone} message={chargeMessage(name, balanceCents, settings?.storeName)} label="Cobrar" />;
 }
 
 /** Caderneta: quem está devendo, quanto e há quanto tempo. */
@@ -265,7 +259,7 @@ export function AccountSection({ customer }: { customer: Customer }) {
                 Forma
               </label>
               <Select id="account-method" value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
-                {RECEIVE_METHODS.map((value) => (
+                {RECEIVING_METHODS.map((value) => (
                   <option key={value} value={value}>
                     {PAYMENT_LABEL[value]}
                   </option>
@@ -374,7 +368,11 @@ function ReverseForm({ customerId, paymentId, onDone }: { customerId: string; pa
       <Button size="sm" variant="ghost" onClick={onDone}>
         Voltar
       </Button>
-      {reverse.error && <span className="w-full text-xs text-red-600">{(reverse.error as Error).message}</span>}
+      {reverse.error && (
+        <div className="w-full">
+          <ErrorMessage error={reverse.error} />
+        </div>
+      )}
     </span>
   );
 }

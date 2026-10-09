@@ -3,9 +3,9 @@
  * As movimentações passam pelo mesmo serviço usado pela API, então saldos, custos médios
  * e alertas (abertos e resolvidos) ficam consistentes com as regras de negócio.
  */
-import bcrypt from 'bcryptjs';
 import { prisma } from '../../lib/prisma.js';
-import { gtinCheckDigit } from '../../lib/barcode.js';
+import { generateInternalEan13 } from '../../lib/barcode.js';
+import { hashPassword } from '../../auth/passwords.js';
 import { registerEntry, registerExit, transferStock } from '../stock/stock.service.js';
 import { openInventory } from '../inventory/inventory.service.js';
 
@@ -20,13 +20,12 @@ function mulberry32(seed: number) {
   };
 }
 let random = mulberry32(42);
-const randomDigits = (length: number) => Array.from({ length }, () => Math.floor(random() * 10)).join('');
-const internalEan13 = () => {
-  const body = '2' + randomDigits(11);
-  return body + gtinCheckDigit(body);
-};
+// Mesmo gerador do cadastro, com os dígitos do PRNG para os códigos serem sempre os mesmos.
+const internalEan13 = () => generateInternalEan13(() => Math.floor(random() * 10));
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
 const SIMULATED_DAYS = 45;
 
 interface ProductSeed {
@@ -248,88 +247,90 @@ const PRODUCTS: ProductSeed[] = [
   },
 ];
 
-/** Apaga todos os dados (usado antes de recarregar a demonstração). */
+/**
+ * Apaga todos os dados (antes de recarregar a demonstração e entre os testes), tudo ou nada.
+ * Filhos antes dos pais: as chaves estrangeiras sem cascata exigem esta ordem.
+ */
 export async function clearDatabase() {
-  await prisma.auditLog.deleteMany();
-  await prisma.delivery.deleteMany();
-  await prisma.courier.deleteMany();
-  await prisma.customerAddress.deleteMany();
-  await prisma.bill.deleteMany();
-  await prisma.loyaltyRule.deleteMany();
-  await prisma.promotion.deleteMany();
-  await prisma.kitItem.deleteMany();
-  await prisma.purchaseOrderItem.deleteMany();
-  await prisma.purchaseOrder.deleteMany();
-  await prisma.customerPayment.deleteMany();
-  await prisma.saleReturnItem.deleteMany();
-  await prisma.saleReturn.deleteMany();
-  await prisma.cashMovement.deleteMany();
-  await prisma.salePayment.deleteMany();
-  await prisma.saleItem.deleteMany();
-  await prisma.stockMovement.deleteMany();
-  await prisma.sale.deleteMany();
-  await prisma.cashSession.deleteMany();
-  await prisma.customer.deleteMany();
-  await prisma.storeSettings.deleteMany();
-  await prisma.nfeImport.deleteMany();
-  await prisma.supplierProduct.deleteMany();
-  await prisma.stockAlert.deleteMany();
-  await prisma.inventoryItem.deleteMany();
-  await prisma.inventory.deleteMany();
-  await prisma.stockLevel.deleteMany();
-  await prisma.product.deleteMany();
-  await prisma.supplier.deleteMany();
-  await prisma.warehouse.deleteMany();
-  await prisma.user.deleteMany();
+  await prisma.$transaction([
+    prisma.auditLog.deleteMany(),
+    prisma.delivery.deleteMany(),
+    prisma.courier.deleteMany(),
+    prisma.customerAddress.deleteMany(),
+    prisma.bill.deleteMany(),
+    prisma.loyaltyRule.deleteMany(),
+    prisma.promotion.deleteMany(),
+    prisma.kitItem.deleteMany(),
+    prisma.purchaseOrderItem.deleteMany(),
+    prisma.purchaseOrder.deleteMany(),
+    prisma.customerPayment.deleteMany(),
+    prisma.saleReturnItem.deleteMany(),
+    prisma.saleReturn.deleteMany(),
+    prisma.cashMovement.deleteMany(),
+    prisma.salePayment.deleteMany(),
+    prisma.saleItem.deleteMany(),
+    prisma.stockMovement.deleteMany(),
+    prisma.sale.deleteMany(),
+    prisma.cashSession.deleteMany(),
+    prisma.customer.deleteMany(),
+    prisma.storeSettings.deleteMany(),
+    prisma.nfeImport.deleteMany(),
+    prisma.supplierProduct.deleteMany(),
+    prisma.stockAlert.deleteMany(),
+    prisma.inventoryItem.deleteMany(),
+    prisma.inventory.deleteMany(),
+    prisma.stockLevel.deleteMany(),
+    prisma.product.deleteMany(),
+    prisma.supplier.deleteMany(),
+    prisma.warehouse.deleteMany(),
+    prisma.user.deleteMany(),
+  ]);
 }
 
-export const DEMO_ACCOUNTS = [
-  { role: 'Administrador', email: 'admin@estoquein.dev', password: 'Admin@123' },
-  { role: 'Gerente', email: 'gerente@estoquein.dev', password: 'Gerente@123' },
-  { role: 'Operador', email: 'operador@estoquein.dev', password: 'Operador@123' },
-  { role: 'Somente leitura', email: 'leitura@estoquein.dev', password: 'Leitura@123' },
-];
+/** Usuários da demonstração (uma lista só: a tela de login mostra os mesmos e-mails e senhas). */
+const DEMO_USERS = [
+  {
+    name: 'Ana Administradora',
+    email: 'admin@estoquein.dev',
+    role: 'ADMIN',
+    label: 'Administrador',
+    password: 'Admin@123',
+  },
+  {
+    name: 'Gustavo Gerente',
+    email: 'gerente@estoquein.dev',
+    role: 'MANAGER',
+    label: 'Gerente',
+    password: 'Gerente@123',
+  },
+  {
+    name: 'Otávio Operador',
+    email: 'operador@estoquein.dev',
+    role: 'OPERATOR',
+    label: 'Operador',
+    password: 'Operador@123',
+  },
+  {
+    name: 'Lia Leitura',
+    email: 'leitura@estoquein.dev',
+    role: 'VIEWER',
+    label: 'Somente leitura',
+    password: 'Leitura@123',
+  },
+] as const;
+
+export const DEMO_ACCOUNTS = DEMO_USERS.map(({ label, email, password }) => ({ role: label, email, password }));
 
 /** Carrega a demonstração completa num banco vazio. */
 export async function loadDemoData({ log = (_message: string) => {} } = {}) {
   random = mulberry32(42);
 
   log('👤 Usuários, estoques e fornecedores...');
-  const hash = (password: string) => bcrypt.hash(password, 10);
-  const [, manager, operator] = await Promise.all([
-    prisma.user.create({
-      data: {
-        name: 'Ana Administradora',
-        email: 'admin@estoquein.dev',
-        role: 'ADMIN',
-        passwordHash: await hash('Admin@123'),
-      },
-    }),
-    prisma.user.create({
-      data: {
-        name: 'Gustavo Gerente',
-        email: 'gerente@estoquein.dev',
-        role: 'MANAGER',
-        passwordHash: await hash('Gerente@123'),
-      },
-    }),
-    prisma.user.create({
-      data: {
-        name: 'Otávio Operador',
-        email: 'operador@estoquein.dev',
-        role: 'OPERATOR',
-        passwordHash: await hash('Operador@123'),
-      },
-    }),
-    prisma.user.create({
-      data: {
-        name: 'Lia Leitura',
-        email: 'leitura@estoquein.dev',
-        role: 'VIEWER',
-        passwordHash: await hash('Leitura@123'),
-      },
-    }),
-  ]);
+  const [, manager, operator] = await Promise.all(
+    DEMO_USERS.map(async ({ name, email, role, password }) =>
+      prisma.user.create({ data: { name, email, role, passwordHash: await hashPassword(password) } }),
+    ),
+  );
 
   const depot = await prisma.warehouse.create({
     data: { code: 'CD', name: 'Depósito Central', address: 'Rua das Indústrias, 1200' },
@@ -390,7 +391,7 @@ export async function loadDemoData({ log = (_message: string) => {} } = {}) {
     ),
   );
 
-  log('🚚 Simulando 45 dias de operação (pode levar alguns segundos)...');
+  log(`🚚 Simulando ${SIMULATED_DAYS} dias de operação (pode levar alguns segundos)...`);
   const stock = new Map<string, number>();
   const key = (productId: string, warehouseId: string) => `${productId}:${warehouseId}`;
   const get = (productId: string, warehouseId: string) => stock.get(key(productId, warehouseId)) ?? 0;
@@ -404,9 +405,10 @@ export async function loadDemoData({ log = (_message: string) => {} } = {}) {
   for (let daysAgo = SIMULATED_DAYS; daysAgo >= 0; daysAgo--) {
     const day = new Date(now.getTime() - daysAgo * DAY_MS);
     day.setHours(8, 0, 0, 0);
-    // Hoje: as movimentações terminam alguns minutos antes de agora.
-    let clock = daysAgo === 0 ? Math.min(day.getTime(), now.getTime() - 4 * 60 * 60 * 1000) : day.getTime();
-    const tick = () => new Date((clock += Math.floor(1 + random() * 4) * 60 * 1000));
+    // Hoje: começa 4 horas antes de agora, para as movimentações do dia não passarem do horário atual.
+    let clock = daysAgo === 0 ? Math.min(day.getTime(), now.getTime() - 4 * HOUR_MS) : day.getTime();
+    // Cada operação acontece de 1 a 4 minutos depois da anterior.
+    const tick = () => new Date((clock += Math.floor(1 + random() * 4) * MINUTE_MS));
     const isFirstDay = daysAgo === SIMULATED_DAYS;
     const weekendBoost = [0, 6].includes(day.getDay()) ? 1.3 : 1;
 

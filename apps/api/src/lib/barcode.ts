@@ -31,7 +31,7 @@ export function validateBarcode(code: string): string | null {
  * Gera um EAN-13 de uso interno. O prefixo "2" é reservado pelo GS1 para
  * circulação restrita (uso dentro da própria loja), então não colide com produtos reais.
  */
-export function generateInternalEan13(): string {
-  const body = '2' + Array.from({ length: 11 }, () => randomInt(10)).join('');
+export function generateInternalEan13(randomDigit: () => number = () => randomInt(10)): string {
+  const body = '2' + Array.from({ length: 11 }, randomDigit).join('');
   return body + gtinCheckDigit(body);
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { UserPlus, UserRound, X } from 'lucide-react';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import { formatPhone } from '../lib/format';
 import { useDebounced } from '../lib/hooks';
 import type { Customer, Paginated } from '../lib/types';
@@ -17,6 +17,10 @@ export interface CustomerChoice {
  * Cliente da venda: busca no cadastro por nome ou telefone, ou cadastra na hora (nome + WhatsApp).
  * Com cliente cadastrado, a venda entra no histórico dele e no lembrete de recompra.
  */
+/** Erro de um campo (ex.: telefone sem DDD) em vez do genérico "Dados inválidos". */
+const createErrorMessage = (error: Error) =>
+  (error instanceof ApiError ? Object.values(error.fieldErrors)[0]?.[0] : undefined) ?? error.message;
+
 export function CustomerPicker({
   value,
   onChange,
@@ -27,6 +31,8 @@ export function CustomerPicker({
   const queryClient = useQueryClient();
   const [phone, setPhone] = useState('');
   const [creating, setCreating] = useState(false);
+  // A lista de sugestões fecha ao sair do campo ou com Esc (o cliente pode ser só um nome na notinha).
+  const [open, setOpen] = useState(false);
   const search = useDebounced(value.name.trim(), 250);
 
   const { data: matches = [] } = useQuery({
@@ -77,16 +83,21 @@ export function CustomerPicker({
         onChange={(e) => {
           onChange({ customer: null, name: e.target.value });
           setCreating(false);
+          setOpen(true);
         }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}
         placeholder="Nome ou telefone"
         autoComplete="off"
       />
-      {typed.length >= 2 && !creating && (
+      {open && typed.length >= 2 && !creating && (
         <ul className="absolute inset-x-0 z-20 mt-1 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
           {matches.map((customer) => (
             <li key={customer.id}>
               <button
                 type="button"
+                onMouseDown={(event) => event.preventDefault()}
                 onClick={() => onChange({ customer, name: customer.name })}
                 className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-100"
               >
@@ -100,6 +111,7 @@ export function CustomerPicker({
             <li>
               <button
                 type="button"
+                onMouseDown={(event) => event.preventDefault()}
                 onClick={() => setCreating(true)}
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-brand-700 hover:bg-slate-100"
               >
@@ -121,7 +133,7 @@ export function CustomerPicker({
             inputMode="tel"
             autoFocus
           />
-          {create.error && <p className="text-xs text-red-600">{(create.error as Error).message}</p>}
+          {create.error && <p className="text-xs text-red-600">{createErrorMessage(create.error)}</p>}
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setCreating(false)}>
               Cancelar

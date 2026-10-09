@@ -21,7 +21,7 @@ export interface NfeItem {
   quantity: number;
   unitPriceCents: number;
   productCents: number;
-  /** Frete, seguro, outras despesas, IPI e ICMS-ST do item, menos o desconto. */
+  /** Frete, seguro, outras despesas, IPI, ICMS-ST e FCP-ST do item, menos o desconto. */
   extraCostsCents: number;
   /** Custo total do item para o estoque (produto + extras). */
   totalCostCents: number;
@@ -93,6 +93,9 @@ const normalizeUnit = (unit: string) => {
   return ['UNID', 'UND', 'UNIDADE', 'UNI', 'UNIT'].includes(clean) ? 'UN' : clean || 'UN';
 };
 
+/** Uma NF-e aceita até 990 itens. */
+const MAX_ITEMS = 990;
+
 export function parseNfeXml(xml: string): NfeDocument {
   if (!xml.includes('<')) throw badRequest('O arquivo não é um XML');
   // NF-e nunca tem DOCTYPE; recusar evita XML com entidades que se expandem (ataque de "bomba" de XML).
@@ -136,11 +139,16 @@ export function parseNfeXml(xml: string): NfeDocument {
   const details = (inf.det ?? []) as Node[];
   if (details.length === 0) throw badRequest('A nota não possui itens');
 
+  if (details.length > MAX_ITEMS) throw badRequest(`A nota tem itens demais (máximo ${MAX_ITEMS})`);
+
   const items = details.map((det): NfeItem => {
     const prod = (det.prod ?? {}) as Node;
     const tax = (det.imposto ?? {}) as Node;
+    // O número do item liga cada item à decisão do usuário (vincular, cadastrar ou pular).
+    const index = Number(det['@_nItem']);
+    if (!Number.isInteger(index) || index < 1) throw badRequest('Item da nota sem número (nItem)');
     const quantity = Number(text(prod.qCom) ?? NaN);
-    if (!Number.isFinite(quantity) || quantity <= 0) throw badRequest(`Quantidade inválida no item ${det['@_nItem']}`);
+    if (!Number.isFinite(quantity) || quantity <= 0) throw badRequest(`Quantidade inválida no item ${index}`);
 
     const ean = [text(prod.cEAN), text(prod.cEANTrib)].find((code) => code && isValidGtin(code)) ?? null;
     const productCents = cents(prod.vProd);
@@ -150,11 +158,13 @@ export function parseNfeXml(xml: string): NfeDocument {
       cents(prod.vOutro) -
       cents(prod.vDesc) +
       cents(findDeep(tax.IPI, 'vIPI')) +
-      cents(findDeep(tax.ICMS, 'vICMSST'));
+      cents(findDeep(tax.ICMS, 'vICMSST')) +
+      // Fundo de Combate à Pobreza retido por substituição: também entra no que a loja paga.
+      cents(findDeep(tax.ICMS, 'vFCPST'));
 
     return {
-      index: Number(det['@_nItem']),
-      code: text(prod.cProd) ?? String(det['@_nItem']),
+      index,
+      code: text(prod.cProd) ?? String(index),
       description: text(prod.xProd) ?? 'Sem descrição',
       barcode: ean,
       ncm: text(prod.NCM),
@@ -167,6 +177,10 @@ export function parseNfeXml(xml: string): NfeDocument {
       totalCostCents: productCents + extraCostsCents,
     };
   });
+
+  if (new Set(items.map((item) => item.index)).size !== items.length) {
+    throw badRequest('A nota tem itens com o mesmo número (nItem)');
+  }
 
   return {
     accessKey,

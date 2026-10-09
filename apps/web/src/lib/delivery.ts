@@ -1,5 +1,5 @@
 import type { Delivery, DeliveryDetail, DeliveryStatus, StoreSettings } from './types';
-import { formatMoney, PAYMENT_LABEL } from './format';
+import { firstName, formatMoney, PAYMENT_LABEL } from './format';
 
 /** Mesma regra do servidor: cobra a taxa quando os produtos (com desconto) ficam abaixo do mínimo. */
 export const deliveryFee = (
@@ -19,6 +19,10 @@ export const DELIVERY_STATUS: Record<DeliveryStatus, string> = {
 /** "Rua das Flores, 120 - ap 3 - Centro" */
 export const addressLine = (d: Pick<Delivery, 'street' | 'addressNumber' | 'complement' | 'district'>) =>
   [`${d.street}, ${d.addressNumber}`, d.complement, d.district].filter(Boolean).join(' - ');
+
+/** Entrega que ainda precisa de atenção no painel (a separar, na rua ou não entregue). */
+export const isOpenDelivery = (d: Pick<Delivery, 'status'>) =>
+  d.status === 'PENDING' || d.status === 'OUT' || d.status === 'FAILED';
 
 /** Entrega em aberto que passou do prazo. */
 export const isLate = (d: Pick<Delivery, 'status' | 'dueAt'>, now = Date.now()) =>
@@ -42,7 +46,7 @@ export function collectInfo(d: DeliveryDetail) {
 
 /** Mensagem de "saiu para entrega" para o WhatsApp do cliente. */
 export function outForDeliveryMessage(d: DeliveryDetail, storeName: string) {
-  const first = d.customer.name.split(' ')[0];
+  const first = firstName(d.customer.name);
   const collect = collectInfo(d);
   const lines = [
     `Olá, ${first}! Seu pedido da ${storeName} saiu para entrega${d.courier ? ` com ${d.courier.name}` : ''}.`,

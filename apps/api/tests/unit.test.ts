@@ -47,6 +47,6 @@ describe('Exportação CSV', () => {
         { header: 'Qtd', value: (r) => r.qty },
       ],
     );
-    expect(csv).toBe('﻿Produto;Qtd\r\n"Café ""especial""; 500g";3');
+    expect(csv).toBe('\uFEFFProduto;Qtd\r\n"Café ""especial""; 500g";3');
   });
 });

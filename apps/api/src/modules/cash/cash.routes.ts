@@ -29,7 +29,20 @@ function forViewer(
   if (!cash || canSeeFinancials(req)) return cash;
   return {
     ...cash,
-    summary: { ...cash.summary, revenueCents: null, byMethod: { CASH: cash.summary.byMethod.CASH } },
+    summary: {
+      ...cash.summary,
+      revenueCents: null,
+      byMethod: { CASH: cash.summary.byMethod.CASH },
+      // Fiado recebido: também só o que entrou em dinheiro na gaveta.
+      accountReceivedByMethod: {
+        CASH: cash.summary.accountReceivedByMethod.CASH,
+        PIX: 0,
+        DEBIT: 0,
+        CREDIT: 0,
+        OTHER: 0,
+      },
+      accountReceivedCents: cash.summary.accountReceivedByMethod.CASH,
+    },
   };
 }
 

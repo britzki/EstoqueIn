@@ -71,6 +71,8 @@ function CourierModal({ courier, onClose }: { courier: Courier | null; onClose: 
   const [phone, setPhone] = useState(courier?.phone ?? '');
   const [fee, setFee] = useState(courier?.feePerDeliveryCents ? centsToInput(courier.feePerDeliveryCents) : '');
   const [active, setActive] = useState(courier?.active ?? true);
+  // Vazio = sem valor por entrega; texto que não é valor não vira R$ 0,00 sem avisar.
+  const feeInvalid = fee.trim() !== '' && parseMoneyInput(fee) === null;
 
   const save = useMutation({
     mutationFn: () => {
@@ -95,7 +97,11 @@ function CourierModal({ courier, onClose }: { courier: Courier | null; onClose: 
           <Button variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button loading={save.isPending} disabled={name.trim().length < 2} onClick={() => save.mutate()}>
+          <Button
+            loading={save.isPending}
+            disabled={name.trim().length < 2 || feeInvalid}
+            onClick={() => save.mutate()}
+          >
             Salvar
           </Button>
         </>
@@ -120,7 +126,7 @@ function CourierModal({ courier, onClose }: { courier: Courier | null; onClose: 
         <Field
           label="Quanto a loja paga por entrega (R$)"
           hint="Para o acerto. Deixe em branco se combinar de outro jeito."
-          error={errors.feePerDeliveryCents?.[0]}
+          error={feeInvalid ? 'Valor inválido' : errors.feePerDeliveryCents?.[0]}
         >
           {(id) => (
             <Input

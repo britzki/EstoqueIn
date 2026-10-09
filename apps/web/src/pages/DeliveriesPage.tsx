@@ -4,10 +4,19 @@ import { Bike, CircleCheckBig, CircleX, Clock, MessageCircle, PackageCheck, Prin
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { cn } from '../lib/cn';
-import { useStoreSettings } from '../lib/hooks';
+import { useDeliveryBoard, useStoreSettings } from '../lib/hooks';
+import { readLocal, writeLocal } from '../lib/storage';
 import { useToast } from '../lib/toast';
-import { formatMoney, formatPhone, whatsappLink } from '../lib/format';
-import { addressLine, collectInfo, DELIVERY_STATUS, formatDue, isLate, outForDeliveryMessage } from '../lib/delivery';
+import { dayEndIso, dayStartIso, formatMoney, formatPhone, toDateInput, whatsappLink } from '../lib/format';
+import {
+  addressLine,
+  collectInfo,
+  DELIVERY_STATUS,
+  formatDue,
+  isLate,
+  isOpenDelivery,
+  outForDeliveryMessage,
+} from '../lib/delivery';
 import type { Courier, CourierReportRow, DeliveryDetail } from '../lib/types';
 import { useDeliverySlipPrinter } from '../components/DeliverySlip';
 import {
@@ -64,11 +73,7 @@ export function DeliveriesPage() {
 }
 
 function Board() {
-  const { data, isPending, error } = useQuery({
-    queryKey: ['deliveries', 'board'],
-    queryFn: () => api.get<DeliveryDetail[]>('/deliveries'),
-    refetchInterval: 30_000,
-  });
+  const { data, isPending, error } = useDeliveryBoard();
   // Relógio para o "atrasada" mudar sem recarregar.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -145,7 +150,7 @@ function DeliveryCard({
   const [dispatching, setDispatching] = useState(false);
   const [failing, setFailing] = useState(false);
   const collect = collectInfo(delivery);
-  const open = delivery.status === 'PENDING' || delivery.status === 'OUT' || delivery.status === 'FAILED';
+  const open = isOpenDelivery(delivery);
 
   const action = useMutation({
     mutationFn: ({ path, body }: { path: string; body?: object }) =>
@@ -156,7 +161,16 @@ function DeliveryCard({
       setDispatching(false);
       setFailing(false);
     },
+    // Saída e "não entregue" mostram o erro na própria janela; "Entregue" é um clique só, então avisa aqui.
+    onError: (error, { path }) => {
+      if (path === 'deliver') toast.error(`Entrega nº ${delivery.number}`, error.message);
+    },
   });
+  // Cada janela começa sem o erro de uma tentativa anterior.
+  const openModal = (show: (value: boolean) => void) => {
+    action.reset();
+    show(true);
+  };
 
   return (
     <Card
@@ -225,7 +239,7 @@ function DeliveryCard({
             Guia
           </Button>
           {(delivery.status === 'PENDING' || delivery.status === 'FAILED') && (
-            <Button size="sm" icon={<Truck className="size-4" />} onClick={() => setDispatching(true)}>
+            <Button size="sm" icon={<Truck className="size-4" />} onClick={() => openModal(setDispatching)}>
               Saiu
             </Button>
           )}
@@ -252,7 +266,12 @@ function DeliveryCard({
             </>
           )}
           {delivery.status !== 'FAILED' && (
-            <Button size="sm" variant="ghost" icon={<CircleX className="size-4" />} onClick={() => setFailing(true)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<CircleX className="size-4" />}
+              onClick={() => openModal(setFailing)}
+            >
               Não entregue
             </Button>
           )}
@@ -301,20 +320,10 @@ function DispatchModal({
     queryFn: () => api.get<Courier[]>('/couriers'),
     select: (list) => list.filter((c) => c.active),
   });
-  const [courierId, setCourierId] = useState(() => {
-    try {
-      return localStorage.getItem(LAST_COURIER_KEY) ?? '';
-    } catch {
-      return '';
-    }
-  });
+  const [courierId, setCourierId] = useState(() => readLocal(LAST_COURIER_KEY) ?? '');
   const valid = couriers.some((c) => c.id === courierId) ? courierId : '';
   const confirm = () => {
-    try {
-      if (valid) localStorage.setItem(LAST_COURIER_KEY, valid);
-    } catch {
-      /* sem armazenamento: só não lembra o último */
-    }
+    if (valid) writeLocal(LAST_COURIER_KEY, valid);
     onConfirm(valid || null);
   };
 
@@ -419,21 +428,17 @@ function FailModal({
   );
 }
 
-const toInputDate = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-
 /** Quantas entregas cada entregador fez e quanto a loja deve pagar a ele no período. */
 function CouriersReport() {
-  const today = new Date();
-  const weekAgo = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000);
-  const [from, setFrom] = useState(toInputDate(weekAgo));
-  const [to, setTo] = useState(toInputDate(today));
+  // Padrão: os últimos 7 dias (hoje e os 6 anteriores).
+  const [from, setFrom] = useState(() => toDateInput(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)));
+  const [to, setTo] = useState(() => toDateInput(new Date()));
   const { data, isPending, error } = useQuery({
     queryKey: ['deliveries', 'couriers-report', from, to],
     queryFn: () =>
       api.get<CourierReportRow[]>('/deliveries/couriers-report', {
-        from: new Date(`${from}T00:00:00`).toISOString(),
-        to: new Date(`${to}T23:59:59.999`).toISOString(),
+        from: dayStartIso(from),
+        to: dayEndIso(to),
       }),
     enabled: Boolean(from && to),
   });
@@ -450,7 +455,9 @@ function CouriersReport() {
           <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="mt-1 w-auto" />
         </label>
       </div>
-      {isPending ? (
+      {!from || !to ? (
+        <EmptyState icon={<Bike />} title="Escolha o período" />
+      ) : isPending ? (
         <Spinner />
       ) : error ? (
         <div className="p-4">

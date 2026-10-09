@@ -191,7 +191,7 @@ export function ProductsPage() {
                       {formatNumber(product.totalQuantity ?? 0)}{' '}
                       <span className="text-xs font-normal text-slate-500">{product.unit}</span>
                     </Td>
-                    <Td className="hidden sm:table-cell text-right tabular-nums">{product.minStock}</Td>
+                    <Td className="hidden sm:table-cell text-right tabular-nums">{formatNumber(product.minStock)}</Td>
                     {can('reports:read') && (
                       <Td className="hidden lg:table-cell text-right tabular-nums">{formatMoney(product.costCents)}</Td>
                     )}
@@ -223,7 +223,6 @@ export function ProductsPage() {
 
       {creating && (
         <ProductFormModal
-          open
           onClose={() => setCreating(false)}
           onSaved={(product) => navigate(`/products/${product.id}`)}
         />

@@ -6,6 +6,7 @@ import { api, ApiError } from '../lib/api';
 import { useDebounced } from '../lib/hooks';
 import { formatNumber } from '../lib/format';
 import type { Paginated, Product } from '../lib/types';
+import { Input } from './ui';
 
 /**
  * Seleção de produto pensada para leitor de código de barras: o leitor "digita" o código
@@ -26,6 +27,7 @@ export function ProductPicker({
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const [notFound, setNotFound] = useState<string | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
   const search = useDebounced(text.trim(), 250);
 
   const { data: results = [], isFetching } = useQuery({
@@ -40,6 +42,7 @@ export function ProductPicker({
     setText('');
     setOpen(false);
     setNotFound(null);
+    setLookupError(null);
   };
 
   const onKeyDown = async (event: KeyboardEvent<HTMLInputElement>) => {
@@ -60,10 +63,14 @@ export function ProductPicker({
         select(await api.get<Product>(`/products/by-barcode/${encodeURIComponent(code)}`));
       } catch (error) {
         if (error instanceof ApiError && error.status === 404) {
-          if (results.length === 1) return select(results[0]);
+          // Código não cadastrado, mas a busca por nome deste mesmo texto achou um produto só: usa ele.
+          if (search === code && results.length === 1) return select(results[0]);
           setNotFound(code);
-          setOpen(true);
+        } else {
+          // Sem conexão ou outro erro: avisa em vez de o bipe "não fazer nada".
+          setLookupError((error as Error).message);
         }
+        setOpen(true);
       }
     }
   };
@@ -96,7 +103,7 @@ export function ProductPicker({
         className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400"
         aria-hidden
       />
-      <input
+      <Input
         id={id}
         autoFocus={autoFocus}
         value={text}
@@ -105,6 +112,7 @@ export function ProductPicker({
           setOpen(true);
           setHighlight(0);
           setNotFound(null);
+          setLookupError(null);
         }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
@@ -113,17 +121,18 @@ export function ProductPicker({
         autoComplete="off"
         role="combobox"
         aria-expanded={open}
-        className="block h-10 w-full rounded-lg border border-slate-300 bg-white pr-3 pl-9 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20 focus:outline-none"
+        className="pl-9"
       />
-      {open && (search.length >= 2 || notFound) && (
+      {open && (search.length >= 2 || notFound || lookupError) && (
         <ul
           className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
           role="listbox"
         >
+          {lookupError && <li className="px-3 py-2 text-sm text-red-600">{lookupError}</li>}
           {notFound && results.length === 0 && (
             <li className="px-3 py-2 text-sm text-slate-500">Nenhum produto com o código “{notFound}”.</li>
           )}
-          {!notFound && results.length === 0 && (
+          {!notFound && !lookupError && results.length === 0 && (
             <li className="px-3 py-2 text-sm text-slate-500">
               {isFetching ? 'Buscando...' : 'Nenhum produto encontrado.'}
             </li>

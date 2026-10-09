@@ -10,6 +10,8 @@ import { id, optionalId, optionalText, positiveInt } from '../../lib/validation.
 import { actorOf, diff, recordAudit, recordUpdate } from '../../lib/audit.js';
 import { currentUser, requirePermission } from '../../middleware/auth.js';
 import { DAY_MS, startOfToday } from '../../lib/dates.js';
+import { receivingMethodSchema } from '../../lib/payments.js';
+import { findOpenCashSession } from '../cash/cash.service.js';
 
 /**
  * Contas a pagar: boletos de fornecedor, aluguel, luz...
@@ -34,7 +36,7 @@ const paySchema = z.object({
   paidAt: z.coerce.date().optional(),
   /** Valor pago, se diferente (juros, desconto). */
   amountCents: positiveInt.optional(),
-  method: z.enum(['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER']),
+  method: receivingMethodSchema,
   /** Saiu da gaveta do caixa (só para dinheiro): registra a sangria no caixa aberto deste estoque. */
   fromCash: z.boolean().default(false),
   warehouseId: id.optional(),
@@ -59,7 +61,7 @@ function nextMonth(date: Date) {
 }
 
 /** Resumo para a tela inicial: vencidas e vencendo nos próximos dias. */
-export async function getBillsSummary(days = 7) {
+async function getBillsSummary(days: number) {
   const today = startOfToday();
   const limit = new Date(today.getTime() + (days + 1) * DAY_MS);
   const open = await prisma.bill.findMany({
@@ -150,9 +152,7 @@ billsRoutes.post('/:id/pay', requirePermission('bills:manage'), async (req, res)
 
     if (input.fromCash) {
       if (input.method !== 'CASH') throw unprocessable('Só pagamento em dinheiro sai da gaveta do caixa');
-      const session = input.warehouseId
-        ? await tx.cashSession.findFirst({ where: { warehouseId: input.warehouseId, status: 'OPEN' } })
-        : await tx.cashSession.findFirst({ where: { status: 'OPEN' }, orderBy: { openedAt: 'desc' } });
+      const session = await findOpenCashSession(tx, input.warehouseId);
       if (!session)
         throw unprocessable('O caixa está fechado. Abra o caixa para pagar com o dinheiro da gaveta.', 'CASH_CLOSED');
       await tx.cashMovement.create({
@@ -209,8 +209,13 @@ billsRoutes.post('/:id/pay', requirePermission('bills:manage'), async (req, res)
 billsRoutes.post('/:id/cancel', requirePermission('bills:manage'), async (req, res) => {
   const current = await prisma.bill.findUnique({ where: { id: param(req, 'id') } });
   if (!current) throw notFound('Conta');
-  if (current.status !== 'OPEN') throw conflict('Esta conta não está em aberto');
-  const bill = await prisma.bill.update({ where: { id: current.id }, data: { status: 'CANCELLED' }, include });
+  // Só cancela se ainda estiver em aberto (um pagamento ao mesmo tempo não pode virar cancelamento).
+  const { count } = await prisma.bill.updateMany({
+    where: { id: current.id, status: 'OPEN' },
+    data: { status: 'CANCELLED' },
+  });
+  if (count === 0) throw conflict('Esta conta não está em aberto');
+  const bill = await prisma.bill.findUniqueOrThrow({ where: { id: current.id }, include });
   await recordAudit(actorOf(req), {
     action: 'UPDATE',
     entity: 'Bill',

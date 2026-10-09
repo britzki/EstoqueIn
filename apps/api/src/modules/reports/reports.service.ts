@@ -32,9 +32,10 @@ export async function getDashboard() {
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 8,
       }),
+      // Mais vendidos: saídas menos o que voltou por venda cancelada ou devolução.
       prisma.stockMovement.groupBy({
         by: ['productId'],
-        where: { type: 'EXIT', createdAt: { gte: since } },
+        where: { type: { in: ['EXIT', 'SALE_CANCEL', 'SALE_RETURN'] }, createdAt: { gte: since } },
         _sum: { quantity: true },
         orderBy: { _sum: { quantity: 'asc' } }, // saídas são negativas
         take: 5,
@@ -76,10 +77,12 @@ export async function getDashboard() {
       exits: roundQty(day.exits),
     })),
     recentMovements,
-    topExits: topExitGroups.map((group) => ({
-      product: topProducts.find((product) => product.id === group.productId),
-      quantity: roundQty(Math.abs(group._sum.quantity ?? 0)),
-    })),
+    topExits: topExitGroups
+      .filter((group) => (group._sum.quantity ?? 0) < 0)
+      .map((group) => ({
+        product: topProducts.find((product) => product.id === group.productId),
+        quantity: roundQty(Math.abs(group._sum.quantity ?? 0)),
+      })),
   };
 }
 
@@ -158,6 +161,8 @@ export async function getMovementSummary({ from, to, warehouseId }: PeriodFilter
       adjustments: number;
       entryValueCents: number;
       exitValueCents: number;
+      /** Valor que voltou ao estoque por venda cancelada ou devolução (desconta do consumo na curva ABC). */
+      returnedValueCents: number;
     }
   >();
   const byType = {
@@ -189,6 +194,7 @@ export async function getMovementSummary({ from, to, warehouseId }: PeriodFilter
           adjustments: 0,
           entryValueCents: 0,
           exitValueCents: 0,
+          returnedValueCents: 0,
         })
         .get(product.id)!;
 
@@ -213,6 +219,10 @@ export async function getMovementSummary({ from, to, warehouseId }: PeriodFilter
         break;
       case 'ADJUSTMENT':
         row.adjustments += movement.quantity;
+        break;
+      case 'SALE_CANCEL':
+      case 'SALE_RETURN':
+        row.returnedValueCents += value;
         break;
     }
   }
@@ -242,7 +252,11 @@ export async function getMovementSummary({ from, to, warehouseId }: PeriodFilter
  */
 export async function getAbcCurve(filters: PeriodFilters) {
   const { rows } = await getMovementSummary(filters);
-  const ranked = rows.filter((row) => row.exitValueCents > 0).sort((a, b) => b.exitValueCents - a.exitValueCents);
+  // Consumo = saídas menos o que voltou: uma venda lançada por engano e cancelada não conta.
+  const ranked = rows
+    .map((row) => ({ ...row, exitValueCents: row.exitValueCents - row.returnedValueCents }))
+    .filter((row) => row.exitValueCents > 0)
+    .sort((a, b) => b.exitValueCents - a.exitValueCents);
   const total = ranked.reduce((sum, row) => sum + row.exitValueCents, 0);
 
   let accumulated = 0;

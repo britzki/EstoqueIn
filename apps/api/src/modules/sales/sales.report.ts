@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma.js';
 import { dayKey } from '../../lib/dates.js';
+import { netPayments } from '../../lib/payments.js';
 import { roundQty } from '../../lib/quantity.js';
 
 interface Filters {
@@ -40,16 +41,8 @@ export async function getSalesReport({ from, to, warehouseId }: Filters) {
   >();
 
   for (const sale of sales) {
-    // O troco sai do dinheiro: o que conta como recebido em dinheiro é o valor líquido.
-    let change = sale.changeCents;
-    for (const payment of sale.payments) {
-      let amount = payment.amountCents;
-      if (payment.method === 'CASH' && change > 0) {
-        const deducted = Math.min(change, amount);
-        amount -= deducted;
-        change -= deducted;
-      }
-      byPayment[payment.method] = (byPayment[payment.method] ?? 0) + amount;
+    for (const payment of netPayments(sale.payments, sale.changeCents)) {
+      byPayment[payment.method] = (byPayment[payment.method] ?? 0) + payment.amountCents;
     }
 
     const key = dayKey(sale.createdAt);

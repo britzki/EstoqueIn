@@ -4,43 +4,13 @@ import type { Role } from '@prisma/client';
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/lib/prisma.js';
 import { signToken } from '../src/auth/tokens.js';
+import { clearDatabase } from '../src/modules/setup/demo-data.js';
 
 export const app = createApp();
 export const api = () => request(app);
 
-export async function resetDatabase() {
-  await prisma.auditLog.deleteMany();
-  await prisma.delivery.deleteMany();
-  await prisma.courier.deleteMany();
-  await prisma.customerAddress.deleteMany();
-  await prisma.bill.deleteMany();
-  await prisma.loyaltyRule.deleteMany();
-  await prisma.promotion.deleteMany();
-  await prisma.kitItem.deleteMany();
-  await prisma.purchaseOrderItem.deleteMany();
-  await prisma.purchaseOrder.deleteMany();
-  await prisma.customerPayment.deleteMany();
-  await prisma.saleReturnItem.deleteMany();
-  await prisma.saleReturn.deleteMany();
-  await prisma.cashMovement.deleteMany();
-  await prisma.salePayment.deleteMany();
-  await prisma.saleItem.deleteMany();
-  await prisma.stockMovement.deleteMany();
-  await prisma.sale.deleteMany();
-  await prisma.cashSession.deleteMany();
-  await prisma.customer.deleteMany();
-  await prisma.storeSettings.deleteMany();
-  await prisma.nfeImport.deleteMany();
-  await prisma.supplierProduct.deleteMany();
-  await prisma.stockAlert.deleteMany();
-  await prisma.inventoryItem.deleteMany();
-  await prisma.inventory.deleteMany();
-  await prisma.stockLevel.deleteMany();
-  await prisma.product.deleteMany();
-  await prisma.supplier.deleteMany();
-  await prisma.warehouse.deleteMany();
-  await prisma.user.deleteMany();
-}
+/** Banco vazio antes de cada teste (mesma limpeza da demonstração). */
+export const resetDatabase = clearDatabase;
 
 export async function createUser(role: Role, password = 'Senha@123') {
   const user = await prisma.user.create({
@@ -51,7 +21,8 @@ export async function createUser(role: Role, password = 'Senha@123') {
       passwordHash: await bcrypt.hash(password, 4),
     },
   });
-  return { user, token: signToken(user.id), auth: { Authorization: `Bearer ${signToken(user.id)}` } };
+  const token = signToken(user);
+  return { user, token, auth: { Authorization: `Bearer ${token}` } };
 }
 
 /** Cenário básico: um produto (mínimo 10), um depósito e uma loja. */

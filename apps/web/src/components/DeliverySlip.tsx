@@ -4,7 +4,7 @@ import { useToast } from '../lib/toast';
 import { addressLine, collectInfo, formatDue } from '../lib/delivery';
 import { formatDateTime, formatNumber, formatPhone, PAYMENT_LABEL, formatMoneyPlain } from '../lib/format';
 import type { DeliveryDetail, StoreSettings } from '../lib/types';
-import { useSlipPrinter } from './Receipt';
+import { SLIP_ROW, SlipFrame, SlipRule, useSlipPrinter } from './Slip';
 
 const money = formatMoneyPlain;
 
@@ -13,17 +13,13 @@ const money = formatMoneyPlain;
  * (com o troco) e os itens para o cliente conferir.
  */
 export function DeliverySlip({ delivery, settings }: { delivery: DeliveryDetail; settings: StoreSettings }) {
-  const narrow = settings.receiptWidth === 58;
-  const row = 'flex justify-between gap-2';
-  const rule = <div className="my-1.5 border-t border-dashed border-black" />;
+  const row = SLIP_ROW;
+  const rule = <SlipRule />;
   const collect = collectInfo(delivery);
   const { sale } = delivery;
 
   return (
-    <div
-      className="bg-white font-mono leading-tight text-black"
-      style={{ width: narrow ? '48mm' : '72mm', fontSize: narrow ? '10px' : '11.5px', padding: '2mm' }}
-    >
+    <SlipFrame settings={settings}>
       <p className="text-center font-bold uppercase">{settings.storeName}</p>
       <p className="text-center text-[1.3em] font-bold">ENTREGA Nº {delivery.number}</p>
       <div className={row}>
@@ -83,7 +79,7 @@ export function DeliverySlip({ delivery, settings }: { delivery: DeliveryDetail;
       <p className="mt-5 text-center">_______________________</p>
       <p className="text-center">Recebido por</p>
       <p className="mt-2 text-center text-[0.9em]">NÃO É DOCUMENTO FISCAL</p>
-    </div>
+    </SlipFrame>
   );
 }
 

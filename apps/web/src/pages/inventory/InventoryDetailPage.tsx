@@ -6,7 +6,8 @@ import clsx from 'clsx';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useToast } from '../../lib/toast';
-import { formatDateTime, formatNumber, roundQty } from '../../lib/format';
+import { formatDateTime, formatNumber, INVENTORY_STATUS, roundQty } from '../../lib/format';
+import { invalidateStock } from '../../lib/hooks';
 import type { InventoryDetail, InventoryItem } from '../../lib/types';
 import {
   Badge,
@@ -24,9 +25,11 @@ import {
   Td,
   Th,
 } from '../../components/ui';
-import { INVENTORY_STATUS } from './InventoriesPage';
 
 type Filter = 'all' | 'pending' | 'divergent';
+
+const isDivergent = (item: InventoryItem) =>
+  item.countedQuantity !== null && item.countedQuantity !== item.expectedQuantity;
 
 export function InventoryDetailPage() {
   const { id = '' } = useParams();
@@ -34,10 +37,7 @@ export function InventoryDetailPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<Filter>('all');
-  const [confirming, setConfirming] = useState(false);
-  const [scan, setScan] = useState({ barcode: '', quantity: '1', mode: 'add' as 'add' | 'set' });
-  const scanRef = useRef<HTMLInputElement>(null);
-  const scanQueue = useRef(Promise.resolve());
+  const [confirming, setConfirming] = useState<'complete' | 'cancel' | null>(null);
 
   const key = ['inventory', id];
   const inventory = useQuery({ queryKey: key, queryFn: () => api.get<InventoryDetail>(`/inventories/${id}`) });
@@ -45,21 +45,6 @@ export function InventoryDetailPage() {
     queryClient.invalidateQueries({ queryKey: key });
     queryClient.invalidateQueries({ queryKey: ['inventories'] });
   };
-
-  const scanMutation = useMutation({
-    mutationFn: (barcode: string) =>
-      api.post<InventoryItem>(`/inventories/${id}/scan`, {
-        barcode,
-        quantity: Number(scan.quantity),
-        mode: scan.mode,
-      }),
-    onSuccess: (item) => {
-      toast.success(item.product.name, `Contado: ${formatNumber(item.countedQuantity ?? 0)}`);
-      refresh();
-      scanRef.current?.focus();
-    },
-    onError: (error) => toast.error('Leitura não registrada', error.message),
-  });
 
   const complete = useMutation({
     mutationFn: () =>
@@ -71,10 +56,9 @@ export function InventoryDetailPage() {
         'Inventário concluído',
         `${summary.adjusted} ajuste(s) aplicados; ${summary.uncounted} item(ns) não contados ficaram como estavam.`,
       );
-      setConfirming(false);
+      setConfirming(null);
       refresh();
-      for (const k of ['products', 'product', 'alerts', 'dashboard', 'movements'])
-        queryClient.invalidateQueries({ queryKey: [k] });
+      invalidateStock(queryClient);
     },
   });
 
@@ -82,6 +66,7 @@ export function InventoryDetailPage() {
     mutationFn: () => api.post(`/inventories/${id}/cancel`),
     onSuccess: () => {
       toast.info('Inventário cancelado');
+      setConfirming(null);
       refresh();
     },
   });
@@ -91,27 +76,13 @@ export function InventoryDetailPage() {
 
   const inv = inventory.data;
   const isOpen = inv.status === 'OPEN';
-  const counted = inv.items.filter((item) => item.countedQuantity !== null);
-  const divergent = counted.filter((item) => item.countedQuantity !== item.expectedQuantity);
+  const countedCount = inv.items.filter((item) => item.countedQuantity !== null).length;
+  const divergentCount = inv.items.filter(isDivergent).length;
   const items = inv.items.filter((item) =>
-    filter === 'pending' ? item.countedQuantity === null : filter === 'divergent' ? divergent.includes(item) : true,
+    filter === 'pending' ? item.countedQuantity === null : filter === 'divergent' ? isDivergent(item) : true,
   );
   const status = INVENTORY_STATUS[inv.status];
-
-  // O leitor pode bipar o próximo produto antes de a leitura anterior ser salva: o campo é limpo na
-  // hora e as leituras vão para o servidor uma de cada vez, na ordem (nenhuma se perde).
-  const onScan = (event: FormEvent) => {
-    event.preventDefault();
-    const barcode = scan.barcode.trim();
-    if (!barcode) return;
-    setScan((current) => ({ ...current, barcode: '' }));
-    scanQueue.current = scanQueue.current.then(() =>
-      scanMutation.mutateAsync(barcode).then(
-        () => undefined,
-        () => undefined,
-      ),
-    );
-  };
+  const canCount = isOpen && can('inventory:count');
 
   return (
     <>
@@ -135,10 +106,10 @@ export function InventoryDetailPage() {
         </div>
         {isOpen && can('inventory:manage') && (
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={() => cancel.mutate()} loading={cancel.isPending}>
+            <Button variant="ghost" onClick={() => setConfirming('cancel')}>
               Cancelar inventário
             </Button>
-            <Button onClick={() => setConfirming(true)} disabled={counted.length === 0}>
+            <Button onClick={() => setConfirming('complete')} disabled={countedCount === 0}>
               Concluir e ajustar
             </Button>
           </div>
@@ -146,68 +117,27 @@ export function InventoryDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {isOpen && can('inventory:count') && (
-          <Card className="h-fit">
-            <CardHeader
-              title="Contagem com leitor"
-              description="Bipe cada unidade, ou informe a quantidade e bipe uma vez."
-            />
-            <form onSubmit={onScan} className="space-y-3 p-5">
-              <div className="relative">
-                <ScanBarcode className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" />
-                <Input
-                  ref={scanRef}
-                  autoFocus
-                  value={scan.barcode}
-                  onChange={(e) => setScan({ ...scan, barcode: e.target.value })}
-                  placeholder="Código de barras"
-                  className="pl-9"
-                  aria-label="Código de barras"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <DecimalInput
-                  value={scan.quantity}
-                  onChange={(value) => setScan({ ...scan, quantity: value })}
-                  aria-label="Quantidade"
-                />
-                <Select
-                  value={scan.mode}
-                  onChange={(e) => setScan({ ...scan, mode: e.target.value as 'add' | 'set' })}
-                  aria-label="Modo"
-                >
-                  <option value="add">Somar</option>
-                  <option value="set">Substituir</option>
-                </Select>
-              </div>
-              <Button type="submit" className="w-full">
-                Registrar leitura
-              </Button>
-            </form>
-            <dl className="grid grid-cols-3 border-t border-slate-100 text-center">
-              {[
-                ['Itens', inv.items.length],
-                ['Contados', counted.length],
-                ['Divergentes', divergent.length],
-              ].map(([label, value]) => (
-                <div key={label} className="py-3">
-                  <dt className="text-xs text-slate-500">{label}</dt>
-                  <dd className="text-lg font-semibold tabular-nums">{value}</dd>
-                </div>
-              ))}
-            </dl>
-          </Card>
+        {canCount && (
+          <ScanCard
+            inventoryId={inv.id}
+            onScanned={refresh}
+            counters={[
+              ['Itens', inv.items.length],
+              ['Contados', countedCount],
+              ['Divergentes', divergentCount],
+            ]}
+          />
         )}
 
-        <Card className={clsx(isOpen && can('inventory:count') ? 'lg:col-span-2' : 'lg:col-span-3')}>
+        <Card className={clsx(canCount ? 'lg:col-span-2' : 'lg:col-span-3')}>
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
             <Tabs
               value={filter}
               onChange={setFilter}
               options={[
                 { value: 'all', label: `Todos (${inv.items.length})` },
-                { value: 'pending', label: `Pendentes (${inv.items.length - counted.length})` },
-                { value: 'divergent', label: `Divergentes (${divergent.length})` },
+                { value: 'pending', label: `Pendentes (${inv.items.length - countedCount})` },
+                { value: 'divergent', label: `Divergentes (${divergentCount})` },
               ]}
             />
           </div>
@@ -226,7 +156,7 @@ export function InventoryDetailPage() {
                   key={item.id}
                   inventoryId={inv.id}
                   item={item}
-                  editable={isOpen && can('inventory:count')}
+                  editable={canCount}
                   onSaved={refresh}
                   closed={!isOpen}
                 />
@@ -237,12 +167,12 @@ export function InventoryDetailPage() {
       </div>
 
       <Modal
-        open={confirming}
-        onClose={() => setConfirming(false)}
+        open={confirming === 'complete'}
+        onClose={() => setConfirming(null)}
         title="Concluir inventário?"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setConfirming(false)}>
+            <Button variant="secondary" onClick={() => setConfirming(null)}>
               Voltar
             </Button>
             <Button onClick={() => complete.mutate()} loading={complete.isPending}>
@@ -254,16 +184,137 @@ export function InventoryDetailPage() {
         {complete.error && <ErrorMessage error={complete.error} />}
         <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
           <li>
-            <strong>{counted.length}</strong> itens contados terão o saldo ajustado para a quantidade contada.
+            <strong>{countedCount}</strong> itens contados terão o saldo ajustado para a quantidade contada.
           </li>
           <li>
-            <strong>{inv.items.length - counted.length}</strong> itens não contados ficam como estão.
+            <strong>{inv.items.length - countedCount}</strong> itens não contados ficam como estão.
           </li>
           <li>Cada diferença vira uma movimentação de ajuste no histórico e os alertas são reavaliados.</li>
           <li>Movimentações feitas durante a contagem são respeitadas: o ajuste é calculado sobre o saldo atual.</li>
         </ul>
       </Modal>
+
+      {/* Cancelar descarta a contagem e não tem volta: pede confirmação. */}
+      <Modal
+        open={confirming === 'cancel'}
+        onClose={() => setConfirming(null)}
+        title="Cancelar inventário?"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirming(null)}>
+              Voltar
+            </Button>
+            <Button variant="danger" onClick={() => cancel.mutate()} loading={cancel.isPending}>
+              Cancelar inventário
+            </Button>
+          </>
+        }
+      >
+        {cancel.error && <ErrorMessage error={cancel.error} />}
+        <p className="text-sm text-slate-600">
+          As contagens feitas ({countedCount} de {inv.items.length} itens) serão descartadas e nenhum saldo será
+          ajustado.
+        </p>
+      </Modal>
     </>
+  );
+}
+
+/**
+ * Contagem com o leitor de código de barras. Fica num componente próprio: digitar o código não
+ * redesenha a tabela de itens a cada caractere.
+ */
+function ScanCard({
+  inventoryId,
+  counters,
+  onScanned,
+}: {
+  inventoryId: string;
+  counters: Array<[string, number]>;
+  onScanned: () => void;
+}) {
+  const toast = useToast();
+  const [scan, setScan] = useState({ barcode: '', quantity: '1', mode: 'add' as 'add' | 'set' });
+  const scanRef = useRef<HTMLInputElement>(null);
+  const scanQueue = useRef(Promise.resolve());
+
+  const scanMutation = useMutation({
+    mutationFn: (barcode: string) =>
+      api.post<InventoryItem>(`/inventories/${inventoryId}/scan`, {
+        barcode,
+        quantity: Number(scan.quantity),
+        mode: scan.mode,
+      }),
+    onSuccess: (item) => {
+      toast.success(item.product.name, `Contado: ${formatNumber(item.countedQuantity ?? 0)}`);
+      onScanned();
+      scanRef.current?.focus();
+    },
+    onError: (error) => toast.error('Leitura não registrada', error.message),
+  });
+
+  // O leitor pode bipar o próximo produto antes de a leitura anterior ser salva: o campo é limpo na
+  // hora e as leituras vão para o servidor uma de cada vez, na ordem (nenhuma se perde).
+  const onScan = (event: FormEvent) => {
+    event.preventDefault();
+    const barcode = scan.barcode.trim();
+    if (!barcode) return;
+    setScan((current) => ({ ...current, barcode: '' }));
+    scanQueue.current = scanQueue.current.then(() =>
+      scanMutation.mutateAsync(barcode).then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+  };
+
+  return (
+    <Card className="h-fit">
+      <CardHeader
+        title="Contagem com leitor"
+        description="Bipe cada unidade, ou informe a quantidade e bipe uma vez."
+      />
+      <form onSubmit={onScan} className="space-y-3 p-5">
+        <div className="relative">
+          <ScanBarcode className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" />
+          <Input
+            ref={scanRef}
+            autoFocus
+            value={scan.barcode}
+            onChange={(e) => setScan({ ...scan, barcode: e.target.value })}
+            placeholder="Código de barras"
+            className="pl-9"
+            aria-label="Código de barras"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <DecimalInput
+            value={scan.quantity}
+            onChange={(value) => setScan({ ...scan, quantity: value })}
+            aria-label="Quantidade"
+          />
+          <Select
+            value={scan.mode}
+            onChange={(e) => setScan({ ...scan, mode: e.target.value as 'add' | 'set' })}
+            aria-label="Modo"
+          >
+            <option value="add">Somar</option>
+            <option value="set">Substituir</option>
+          </Select>
+        </div>
+        <Button type="submit" className="w-full">
+          Registrar leitura
+        </Button>
+      </form>
+      <dl className="grid grid-cols-3 border-t border-slate-100 text-center">
+        {counters.map(([label, value]) => (
+          <div key={label} className="py-3">
+            <dt className="text-xs text-slate-500">{label}</dt>
+            <dd className="text-lg font-semibold tabular-nums">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </Card>
   );
 }
 

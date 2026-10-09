@@ -242,27 +242,54 @@ export async function transferStock(input: TransferInput, userId: string, option
   return result;
 }
 
+/**
+ * Leva o saldo do produto no estoque para a quantidade informada, registrando a diferença como ajuste
+ * (ajuste manual, inventário e saldo vindo da planilha). Devolve null se o saldo já é esse.
+ */
+export async function adjustTo(
+  tx: Tx,
+  input: {
+    productId: string;
+    warehouseId: string;
+    target: number;
+    reason: string;
+    userId: string;
+    unitCostCents?: number | null;
+    inventoryId?: string;
+  },
+) {
+  const level = await tx.stockLevel.findUnique({
+    where: { productId_warehouseId: { productId: input.productId, warehouseId: input.warehouseId } },
+  });
+  const delta = roundQty(input.target - (level?.quantity ?? 0));
+  if (delta === 0) return null;
+  return applyMovement(tx, {
+    type: 'ADJUSTMENT',
+    productId: input.productId,
+    warehouseId: input.warehouseId,
+    delta,
+    unitCostCents: input.unitCostCents,
+    inventoryId: input.inventoryId,
+    reason: input.reason,
+    userId: input.userId,
+  });
+}
+
 /** Ajuste manual: informa o saldo correto e o sistema calcula a diferença. */
 export async function adjustStock(input: AdjustmentInput, userId: string) {
   const result = await prisma.$transaction(async (tx) => {
     const product = await ensureActiveProduct(tx, input.productId);
     await ensureActiveWarehouse(tx, input.warehouseId);
-
-    const level = await tx.stockLevel.findUnique({
-      where: { productId_warehouseId: { productId: input.productId, warehouseId: input.warehouseId } },
-    });
-    const delta = roundQty(input.newQuantity - (level?.quantity ?? 0));
-    if (delta === 0) throw new AppError(422, 'O saldo informado é igual ao saldo atual', 'NOTHING_TO_ADJUST');
-
-    return applyMovement(tx, {
-      type: 'ADJUSTMENT',
+    const adjusted = await adjustTo(tx, {
       productId: input.productId,
       warehouseId: input.warehouseId,
-      delta,
+      target: input.newQuantity,
       unitCostCents: product.costCents,
       reason: input.reason,
       userId,
     });
+    if (!adjusted) throw new AppError(422, 'O saldo informado é igual ao saldo atual', 'NOTHING_TO_ADJUST');
+    return adjusted;
   });
 
   publishAlertChanges([result.alert]);

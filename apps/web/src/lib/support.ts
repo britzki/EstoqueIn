@@ -1,11 +1,12 @@
 import { desktop } from './desktop';
+import { formatPhone, whatsappLink } from './format';
 
 /** WhatsApp do suporte do EstoqueIn (DDI + DDD + número, só dígitos). */
-export const SUPPORT_WHATSAPP = '5511989045896';
-export const SUPPORT_WHATSAPP_LABEL = '(11) 98904-5896';
+const SUPPORT_WHATSAPP = '5511989045896';
+export const SUPPORT_WHATSAPP_LABEL = formatPhone(SUPPORT_WHATSAPP.slice(2));
 
 /** Versão do programa instalado (no navegador, "web"). */
-export async function appVersion() {
+async function appVersion() {
   try {
     return desktop ? await desktop.getVersion() : 'web';
   } catch {
@@ -21,5 +22,5 @@ export async function supportLink({ storeName, question }: { storeName?: string;
     storeName ? `Loja: ${storeName}` : null,
     `Versão: ${await appVersion()}`,
   ].filter(Boolean);
-  return `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(lines.join('\n'))}`;
+  return whatsappLink(SUPPORT_WHATSAPP, lines.join('\n'));
 }

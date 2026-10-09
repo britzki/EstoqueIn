@@ -174,52 +174,57 @@ export function ProductDetailPage() {
         </div>
       )}
 
-      <div className={p.isKit ? 'hidden' : 'grid grid-cols-2 gap-4 lg:grid-cols-4'}>
-        <StatCard
-          label="Saldo total"
-          value={`${formatNumber(p.totalQuantity)} ${p.unit}`}
-          hint={`Mínimo padrão: ${formatNumber(p.minStock)}`}
-        />
-        {canSeeCost && (
-          <StatCard label="Custo médio" value={formatMoney(p.costCents)} hint="Média ponderada das entradas" />
-        )}
-        <StatCard
-          label="Preço de venda"
-          value={formatMoney(p.priceCents)}
-          hint={canSeeCost ? `Margem ${formatPercent(margin)}` : undefined}
-        />
-        {canSeeCost && (
+      {/* Kit não tem saldo próprio: os números acima (kits montáveis e custo) substituem estes. */}
+      {!p.isKit && (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatCard
-            label="Valor em estoque"
-            value={formatMoney(Math.round(p.totalQuantity * p.costCents))}
-            hint="Saldo × custo médio"
+            label="Saldo total"
+            value={`${formatNumber(p.totalQuantity)} ${p.unit}`}
+            hint={`Mínimo padrão: ${formatNumber(p.minStock)}`}
           />
-        )}
-      </div>
+          {canSeeCost && (
+            <StatCard label="Custo médio" value={formatMoney(p.costCents)} hint="Média ponderada das entradas" />
+          )}
+          <StatCard
+            label="Preço de venda"
+            value={formatMoney(p.priceCents)}
+            hint={canSeeCost ? `Margem ${formatPercent(margin)}` : undefined}
+          />
+          {canSeeCost && (
+            <StatCard
+              label="Valor em estoque"
+              value={formatMoney(Math.round(p.totalQuantity * p.costCents))}
+              hint="Saldo × custo médio"
+            />
+          )}
+        </div>
+      )}
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
         {p.isKit && <KitEditor product={p} editable={can('products:write')} />}
-        <Card className={p.isKit ? 'hidden' : 'lg:col-span-2'}>
-          <CardHeader
-            title="Saldo por estoque"
-            description="O mínimo pode ser ajustado por estoque; vazio usa o padrão do produto."
-          />
-          <Table>
-            <thead>
-              <tr>
-                <Th>Estoque</Th>
-                <Th className="text-right">Saldo</Th>
-                <Th className="text-right">Mínimo</Th>
-                <Th>Situação</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {p.stock.map((row) => (
-                <StockRow key={row.warehouse.id} productId={p.id} row={row} editable={can('products:write')} />
-              ))}
-            </tbody>
-          </Table>
-        </Card>
+        {!p.isKit && (
+          <Card className="lg:col-span-2">
+            <CardHeader
+              title="Saldo por estoque"
+              description="O mínimo pode ser ajustado por estoque; vazio usa o padrão do produto."
+            />
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Estoque</Th>
+                  <Th className="text-right">Saldo</Th>
+                  <Th className="text-right">Mínimo</Th>
+                  <Th>Situação</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {p.stock.map((row) => (
+                  <StockRow key={row.warehouse.id} productId={p.id} row={row} editable={can('products:write')} />
+                ))}
+              </tbody>
+            </Table>
+          </Card>
+        )}
 
         <Card>
           <CardHeader
@@ -268,8 +273,8 @@ export function ProductDetailPage() {
             >
               <TriangleAlert className="size-4 shrink-0" />
               <span>
-                <strong>{ALERT_LABEL[alert.type]}</strong> em {alert.warehouse.name}: saldo {alert.quantity}, mínimo{' '}
-                {alert.threshold}.
+                <strong>{ALERT_LABEL[alert.type]}</strong> em {alert.warehouse.name}: saldo{' '}
+                {formatNumber(alert.quantity)}, mínimo {formatNumber(alert.threshold)}.
               </span>
             </div>
           ))}
@@ -340,10 +345,9 @@ export function ProductDetailPage() {
         )}
       </Card>
 
-      {editing && <ProductFormModal open product={p} onClose={() => setEditing(false)} />}
+      {editing && <ProductFormModal product={p} onClose={() => setEditing(false)} />}
       {creatingBulk && (
         <ProductFormModal
-          open
           bulkOf={p}
           onClose={() => setCreatingBulk(false)}
           onSaved={(created) => navigate(`/products/${created.id}`)}
@@ -402,7 +406,7 @@ function StockRow({ productId, row, editable }: { productId: string; row: Produc
           >
             <DecimalInput
               value={value}
-              placeholder={`padrão: ${row.effectiveMin}`}
+              placeholder={`padrão: ${formatNumber(row.effectiveMin)}`}
               onChange={(value) => setValue(value)}
               className="h-8 w-36 text-right"
               aria-label={`Mínimo em ${row.warehouse.name}`}

@@ -2,11 +2,13 @@ import { Router } from 'express';
 import { env } from '../../config/env.js';
 import { AppError, badRequest } from '../../lib/errors.js';
 import { param } from '../../lib/http.js';
+import { requirePermission } from '../../middleware/auth.js';
 import { ExternalServiceError, lookupBarcode } from './open-food-facts.js';
 
 export const integrationsRoutes = Router();
 
-integrationsRoutes.get('/barcode/:code', async (req, res) => {
+// Só quem cadastra produtos usa (preenche nome e categoria no cadastro).
+integrationsRoutes.get('/barcode/:code', requirePermission('products:write'), async (req, res) => {
   if (!env.BARCODE_LOOKUP_ENABLED) throw new AppError(503, 'Consulta externa desativada', 'INTEGRATION_DISABLED');
 
   const code = param(req, 'code').trim();

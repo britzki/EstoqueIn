@@ -3,8 +3,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ClockArrowDown, Download, Plus } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { useWarehouses } from '../../lib/hooks';
-import { useToast } from '../../lib/toast';
+import { useDownload, useWarehouses } from '../../lib/hooks';
 import { MOVEMENT_LABEL, dayEndIso, dayStartIso } from '../../lib/format';
 import type { Movement, MovementType, Paginated } from '../../lib/types';
 import { MovementsTable } from '../../components/MovementsTable';
@@ -23,11 +22,10 @@ import {
 
 export function MovementsPage() {
   const { can } = useAuth();
-  const toast = useToast();
   const { data: warehouses = [] } = useWarehouses();
   const [filters, setFilters] = useState({ type: '', warehouseId: '', from: '', to: '' });
   const [page, setPage] = useState(1);
-  const [exporting, setExporting] = useState(false);
+  const { download, downloading: exporting } = useDownload();
 
   const query = {
     type: filters.type,
@@ -47,16 +45,7 @@ export function MovementsPage() {
     setPage(1);
   };
 
-  const exportCsv = async () => {
-    setExporting(true);
-    try {
-      await api.download('/stock/movements', 'movimentacoes.csv', { ...query, format: 'csv' });
-    } catch (error) {
-      toast.error('Falha ao exportar', (error as Error).message);
-    } finally {
-      setExporting(false);
-    }
-  };
+  const exportCsv = () => download('/stock/movements', 'movimentacoes.csv', { ...query, format: 'csv' });
 
   return (
     <>

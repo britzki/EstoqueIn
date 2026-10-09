@@ -34,7 +34,7 @@ async function findImport(accessKey: string) {
  * "FD C/6", "CX C/ 12", "CAIXA COM 24 UN"; dúzia (DZ) vale 12.
  */
 export function guessConversionFactor(item: Pick<NfeItem, 'unit' | 'description'>) {
-  if (['UN', 'KG', 'G', 'L', 'ML', 'M'].includes(item.unit)) return 1;
+  if (item.unit === 'UN' || FRACTIONAL_UNITS.includes(item.unit)) return 1;
   if (item.unit === 'DZ') return 12;
   const match =
     item.description.match(/\bC\/\s*(\d{1,4})\b/i) ??
@@ -51,19 +51,27 @@ const tokens = (text: string) =>
     .split(/[^a-z0-9]+/)
     .filter((token) => token && !['de', 'da', 'do', 'e', 'com', 'c'].includes(token));
 
+/** Palavras do nome de cada produto, calculadas uma vez para a nota inteira. */
+const indexByName = <T extends { name: string }>(products: T[]) =>
+  products.map((product) => ({ product, words: tokens(product.name) })).filter((entry) => entry.words.length >= 2);
+
 /**
  * Procura um produto cujo nome esteja contido na descrição da nota
  * (ex.: "Arroz branco tipo 1 5kg" em "ARROZ BRANCO TIPO 1 5KG FD C/6").
  * Exige todas as palavras do nome e um único candidato, para não sugerir errado.
  */
-export function findByName<T extends { name: string }>(description: string, products: T[]): T | undefined {
+function matchByName<T>(description: string, index: Array<{ product: T; words: string[] }>): T | undefined {
   const words = new Set(tokens(description));
-  const candidates = products.filter((product) => {
-    const name = tokens(product.name);
-    return name.length >= 2 && name.every((token) => words.has(token));
-  });
-  return candidates.length === 1 ? candidates[0] : undefined;
+  const candidates = index.filter((entry) => entry.words.every((token) => words.has(token)));
+  return candidates.length === 1 ? candidates[0].product : undefined;
 }
+
+export const findByName = <T extends { name: string }>(description: string, products: T[]) =>
+  matchByName(description, indexByName(products));
+
+/** Produto controlado com casas decimais: o que foi marcado ou, sem marcação, pela unidade (KG, L...). */
+const isFractional = (product: { fractional?: boolean; unit?: string }) =>
+  product.fractional ?? FRACTIONAL_UNITS.includes(product.unit ?? 'UN');
 
 /** Sugestão de SKU a partir do código do fornecedor, sem repetir SKUs já existentes. */
 function suggestSku(item: NfeItem, number: string, taken: Set<string>) {
@@ -89,7 +97,6 @@ export async function previewNfe(xml: string) {
   const nfe = parseNfeXml(xml);
   const supplier = await findSupplierByDocument(nfe.supplier.document);
   const codes = nfe.items.map((item) => item.code);
-  const barcodes = nfe.items.flatMap((item) => (item.barcode ? [item.barcode] : []));
 
   const productFields = {
     id: true,
@@ -100,7 +107,7 @@ export async function previewNfe(xml: string) {
     active: true,
     fractional: true,
   } as const;
-  const [alreadyImported, mappings, byBarcode, catalog] = await Promise.all([
+  const [alreadyImported, mappings, catalog] = await Promise.all([
     findImport(nfe.accessKey),
     supplier
       ? prisma.supplierProduct.findMany({
@@ -108,18 +115,18 @@ export async function previewNfe(xml: string) {
           include: { product: { select: productFields } },
         })
       : [],
-    prisma.product.findMany({ where: { barcode: { in: barcodes } }, select: productFields }),
     prisma.product.findMany({ select: productFields }),
   ]);
 
   const takenSkus = new Set(catalog.map((product) => product.sku));
-  const activeCatalog = catalog.filter((product) => product.active);
+  const byBarcode = new Map(catalog.flatMap((product) => (product.barcode ? [[product.barcode, product]] : [])));
+  const nameIndex = indexByName(catalog.filter((product) => product.active));
 
   const items = nfe.items.map((item) => {
     const mapping = mappings.find((m) => m.supplierCode === item.code);
-    const barcodeMatch = item.barcode ? byBarcode.find((product) => product.barcode === item.barcode) : undefined;
+    const barcodeMatch = item.barcode ? byBarcode.get(item.barcode) : undefined;
     const conversionFactor = guessConversionFactor(item);
-    const nameMatch = !mapping && !barcodeMatch ? findByName(item.description, activeCatalog) : undefined;
+    const nameMatch = !mapping && !barcodeMatch ? matchByName(item.description, nameIndex) : undefined;
     const match = mapping
       ? { by: 'supplierCode' as const, product: mapping.product, conversionFactor: mapping.conversionFactor }
       : barcodeMatch
@@ -205,17 +212,25 @@ export async function importNfe(xml: string, decisions: ImportDecisions, user: {
   });
   const acceptsFraction = (decision: ImportDecisions['items'][number]) =>
     decision.action === 'create'
-      ? (decision.product?.fractional ?? FRACTIONAL_UNITS.includes(decision.product?.unit ?? 'UN'))
+      ? isFractional(decision.product ?? {})
       : (linked.find((product) => product.id === decision.productId)?.fractional ?? false);
 
   const lines = nfe.items.map((item) => {
     const decision = decisionByIndex.get(item.index);
     if (!decision) throw badRequest(`Falta definir o que fazer com o item ${item.index} (${item.description})`);
     if (decision.action === 'link' && !decision.productId) throw badRequest(`Escolha o produto do item ${item.index}`);
+    if (decision.action === 'link' && !linked.some((product) => product.id === decision.productId)) {
+      throw notFound(`Produto do item ${item.index}`);
+    }
     if (decision.action === 'create' && !decision.product)
       throw badRequest(`Informe os dados do novo produto do item ${item.index}`);
 
     const quantity = roundQty(item.quantity * decision.conversionFactor);
+    if (decision.action !== 'skip' && quantity <= 0) {
+      throw unprocessable(
+        `Item ${item.index} (${item.description}): ${item.quantity} × ${decision.conversionFactor} fica zero; ajuste o fator de conversão`,
+      );
+    }
     if (decision.action !== 'skip' && !acceptsFraction(decision) && !isWholeNumber(quantity)) {
       throw unprocessable(
         `Item ${item.index} (${item.description}): ${item.quantity} ${item.unit} × ${decision.conversionFactor} = ${quantity}. ` +
@@ -290,15 +305,13 @@ export async function importNfe(xml: string, decisions: ImportDecisions, user: {
               barcode: data.barcode ?? null,
               category: data.category ?? null,
               unit: data.unit,
-              fractional: data.fractional ?? FRACTIONAL_UNITS.includes(data.unit),
+              fractional: isFractional(data),
               priceCents: data.priceCents ?? 0,
               minStock: data.minStock ?? 0,
               supplierId: supplier.id,
             },
           });
           productId = created.id;
-        } else if (!(await tx.product.findUnique({ where: { id: productId! } }))) {
-          throw notFound(`Produto do item ${item.index}`);
         }
 
         await tx.supplierProduct.upsert({

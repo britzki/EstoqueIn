@@ -29,19 +29,28 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
   const [scheme, token] = req.headers.authorization?.split(' ') ?? [];
   if (scheme !== 'Bearer' || !token) throw unauthorized();
 
-  let userId: string;
+  let payload: ReturnType<typeof verifyToken>;
   try {
-    userId = verifyToken(token).sub;
+    payload = verifyToken(token);
   } catch {
     throw unauthorized();
   }
 
   // Busca o usuário a cada requisição para que desativações e trocas de perfil valham na hora.
   const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, name: true, email: true, role: true, active: true, mustChangePassword: true },
+    where: { id: payload.sub },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      active: true,
+      mustChangePassword: true,
+      tokenVersion: true,
+    },
   });
-  if (!user?.active) throw unauthorized();
+  // Senha trocada ou redefinida depois deste login: a sessão antiga deixa de valer.
+  if (!user?.active || (payload.ver ?? 0) !== user.tokenVersion) throw unauthorized();
 
   req.user = {
     id: user.id,

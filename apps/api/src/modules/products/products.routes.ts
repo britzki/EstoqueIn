@@ -10,7 +10,7 @@ import { queryBoolean } from '../../lib/validation.js';
 import { FRACTIONAL_UNITS, isWholeNumber, roundQty } from '../../lib/quantity.js';
 import { currentUser, requirePermission } from '../../middleware/auth.js';
 import { actorOf, diff, recordAudit, recordUpdate } from '../../lib/audit.js';
-import { evaluateStockAlert, publishAlertChanges } from '../alerts/alerts.service.js';
+import { reevaluateProductAlerts } from '../alerts/alerts.service.js';
 import { decodeCsv, IMPORT_TEMPLATE, importProducts } from './products.import.js';
 import { minQuantitySchema, productFiltersSchema, productSchema, productUpdateSchema } from './products.schemas.js';
 import { categoriesRoutes } from './categories.js';
@@ -42,7 +42,7 @@ const PRODUCT_AUDIT_FIELDS = [
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 2 * 1024 * 1024 },
+  limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 0 },
   fileFilter: (_req, file, callback) => {
     const isCsv = file.originalname.toLowerCase().endsWith('.csv') || file.mimetype.includes('csv');
     if (!isCsv) return callback(badRequest('Envie um arquivo .csv'));
@@ -51,16 +51,6 @@ const upload = multer({
 });
 
 /** Reavalia os alertas de um produto em todos os estoques (ex.: depois de mudar o mínimo). */
-async function reevaluateProductAlerts(productId: string, warehouseId?: string) {
-  const changes = await prisma.$transaction(async (tx) => {
-    const levels = await tx.stockLevel.findMany({ where: { productId, warehouseId }, select: { warehouseId: true } });
-    const results = [];
-    for (const level of levels) results.push(await evaluateStockAlert(tx, productId, level.warehouseId));
-    return results;
-  });
-  publishAlertChanges(changes);
-}
-
 productsRoutes.get('/', async (req, res) => {
   const filters = productFiltersSchema.parse(req.query);
   const where: Prisma.ProductWhereInput = {
@@ -244,9 +234,19 @@ productsRoutes.post('/', requirePermission('products:write'), async (req, res) =
 
 productsRoutes.patch('/:id', requirePermission('products:write'), async (req, res) => {
   const data = productUpdateSchema.parse(req.body);
-  await validateProductRules(data, param(req, 'id'));
   const before = await prisma.product.findUnique({ where: { id: param(req, 'id') } });
   if (!before) throw notFound('Produto');
+  // As regras valem para o produto como ele vai ficar, não só para o que foi enviado
+  // (ex.: transformar em kit um produto que já é granel).
+  await validateProductRules(
+    {
+      isKit: data.isKit ?? before.isKit,
+      fractional: data.fractional ?? before.fractional,
+      sourceProductId: data.sourceProductId === undefined ? before.sourceProductId : data.sourceProductId,
+      sourceYield: data.sourceYield === undefined ? before.sourceYield : data.sourceYield,
+    },
+    before.id,
+  );
   const product = await prisma.product.update({
     where: { id: before.id },
     data: { ...data, ...(data.sourceProductId === null && { sourceYield: null }) },
@@ -257,7 +257,7 @@ productsRoutes.patch('/:id', requirePermission('products:write'), async (req, re
     summary: `Produto ${product.name} (${product.sku}) alterado`,
     changes: diff(before, data, [...PRODUCT_AUDIT_FIELDS]),
   });
-  if (data.minStock !== undefined) await reevaluateProductAlerts(product.id);
+  if (data.minStock !== undefined || data.isKit !== undefined) await reevaluateProductAlerts(product.id);
   res.json(product);
 });
 

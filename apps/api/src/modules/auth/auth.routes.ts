@@ -1,19 +1,19 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { prisma } from '../../lib/prisma.js';
 import { AppError } from '../../lib/errors.js';
-import { authenticate, currentUser, type AuthUser } from '../../middleware/auth.js';
-import { permissionsFor } from '../../auth/permissions.js';
+import { authenticate, currentUser } from '../../middleware/auth.js';
+import { emailSchema, hashPassword, passwordSchema, verifyLogin, verifyPassword } from '../../auth/passwords.js';
+import { toSession } from '../../auth/session.js';
 import { signToken } from '../../auth/tokens.js';
 import { recordAudit } from '../../lib/audit.js';
 
 export const authRoutes = Router();
 
 const loginSchema = z.object({
-  email: z.string().trim().toLowerCase().pipe(z.email('E-mail inválido')),
+  email: emailSchema,
   password: z.string().min(1, 'Informe a senha'),
 });
 
@@ -23,24 +23,21 @@ const loginLimiter = rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   skip: () => env.NODE_ENV === 'test',
+  // Só tentativas erradas contam: no computador da loja todos entram pelo mesmo endereço.
+  skipSuccessfulRequests: true,
   message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Muitas tentativas. Tente novamente em alguns minutos.' } },
-});
-
-const toSession = (user: AuthUser) => ({
-  user: { id: user.id, name: user.name, email: user.email, role: user.role },
-  permissions: permissionsFor(user.role),
-  mustChangePassword: user.mustChangePassword,
 });
 
 authRoutes.post('/login', loginLimiter, async (req, res) => {
   const { email, password } = loginSchema.parse(req.body);
   const user = await prisma.user.findUnique({ where: { email } });
 
-  // Mesmo erro para e-mail inexistente e senha errada, para não revelar quais e-mails existem.
-  const valid = user?.active && (await bcrypt.compare(password, user.passwordHash));
-  if (!user || !valid) throw new AppError(401, 'E-mail ou senha inválidos', 'INVALID_CREDENTIALS');
+  // Mesmo erro (e mesmo tempo de resposta) para e-mail inexistente e senha errada,
+  // para não revelar quais e-mails existem.
+  const matches = await verifyLogin(password, user?.passwordHash);
+  if (!user?.active || !matches) throw new AppError(401, 'E-mail ou senha inválidos', 'INVALID_CREDENTIALS');
 
-  res.json({ token: signToken(user.id), ...toSession(user) });
+  res.json({ token: signToken(user), ...toSession(user) });
 });
 
 authRoutes.get('/me', authenticate, (req, res) => {
@@ -49,7 +46,7 @@ authRoutes.get('/me', authenticate, (req, res) => {
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Informe a senha atual'),
-  newPassword: z.string().min(8, 'A nova senha deve ter pelo menos 8 caracteres').max(72),
+  newPassword: passwordSchema('A nova senha'),
 });
 
 /** O próprio usuário troca a senha (obrigatório quando a senha é temporária). */
@@ -58,15 +55,16 @@ authRoutes.post('/change-password', authenticate, async (req, res) => {
   const session = currentUser(req);
   const user = await prisma.user.findUniqueOrThrow({ where: { id: session.id } });
 
-  if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+  if (!(await verifyPassword(currentPassword, user.passwordHash))) {
     throw new AppError(422, 'A senha atual não confere', 'WRONG_PASSWORD');
   }
   if (currentPassword === newPassword)
     throw new AppError(422, 'A nova senha deve ser diferente da atual', 'SAME_PASSWORD');
 
-  await prisma.user.update({
+  // Nova versão do login: sessões abertas em outros lugares com a senha antiga caem; esta recebe um token novo.
+  const updated = await prisma.user.update({
     where: { id: user.id },
-    data: { passwordHash: await bcrypt.hash(newPassword, 10), mustChangePassword: false },
+    data: { passwordHash: await hashPassword(newPassword), mustChangePassword: false, tokenVersion: { increment: 1 } },
   });
   await recordAudit(session, {
     action: 'SECURITY',
@@ -75,5 +73,5 @@ authRoutes.post('/change-password', authenticate, async (req, res) => {
     summary: `${user.name} trocou a própria senha`,
   });
 
-  res.json(toSession({ ...session, mustChangePassword: false }));
+  res.json({ token: signToken(updated), ...toSession({ ...session, mustChangePassword: false }) });
 });

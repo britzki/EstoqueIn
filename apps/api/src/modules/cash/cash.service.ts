@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import type { PaymentMethod } from '@prisma/client';
-import { prisma } from '../../lib/prisma.js';
-import { getStoreSettings } from '../settings/settings.routes.js';
+import { prisma, type Tx } from '../../lib/prisma.js';
+import { netPayments, PAYMENT_METHODS, zeroByMethod } from '../../lib/payments.js';
+import { getStoreSettings } from '../settings/settings.service.js';
 import { conflict, notFound, unprocessable } from '../../lib/errors.js';
 import { id, nonNegativeInt, optionalText, positiveInt } from '../../lib/validation.js';
 
@@ -18,7 +18,12 @@ export const closeSchema = z.object({
   notes: optionalText(500),
 });
 
-const METHODS: PaymentMethod[] = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER', 'ACCOUNT'];
+/** Caixa aberto do estoque informado ou, sem estoque, o aberto mais recente. */
+export const findOpenCashSession = (client: Tx, warehouseId?: string) =>
+  client.cashSession.findFirst({
+    where: { status: 'OPEN', ...(warehouseId && { warehouseId }) },
+    orderBy: { openedAt: 'desc' },
+  });
 
 /**
  * Resumo do caixa. O dinheiro esperado na gaveta é:
@@ -47,21 +52,12 @@ export async function getCashSummary(sessionId: string) {
   });
   if (!session) throw notFound('Caixa');
 
-  const byMethod = Object.fromEntries(METHODS.map((method) => [method, 0])) as Record<PaymentMethod, number>;
+  const byMethod = zeroByMethod();
   const completed = session.sales.filter((sale) => sale.status === 'COMPLETED');
   for (const sale of completed) {
-    let change = sale.changeCents;
-    for (const payment of sale.payments) {
-      let amount = payment.amountCents;
-      if (payment.method === 'CASH' && change > 0) {
-        const deducted = Math.min(change, amount);
-        amount -= deducted;
-        change -= deducted;
-      }
-      byMethod[payment.method] += amount;
-    }
+    for (const payment of netPayments(sale.payments, sale.changeCents)) byMethod[payment.method] += payment.amountCents;
   }
-  const refunds = Object.fromEntries(METHODS.map((method) => [method, 0])) as Record<PaymentMethod, number>;
+  const refunds = zeroByMethod();
   for (const saleReturn of session.returns) refunds[saleReturn.refundMethod] += saleReturn.refundCents;
 
   const withdrawals = session.movements
@@ -69,7 +65,7 @@ export async function getCashSummary(sessionId: string) {
     .reduce((sum, m) => sum + m.amountCents, 0);
   const deposits = session.movements.filter((m) => m.type === 'DEPOSIT').reduce((sum, m) => sum + m.amountCents, 0);
   // Pagamentos de fiado recebidos neste caixa.
-  const accountReceived = Object.fromEntries(METHODS.map((method) => [method, 0])) as Record<PaymentMethod, number>;
+  const accountReceived = zeroByMethod();
   for (const payment of session.customerPayments) accountReceived[payment.method] += payment.amountCents;
   const expectedCashCents =
     session.openingCents + byMethod.CASH - refunds.CASH + accountReceived.CASH + deposits - withdrawals;
@@ -92,10 +88,10 @@ export async function getCashSummary(sessionId: string) {
       revenueCents:
         completed.reduce((sum, sale) => sum + sale.totalCents, 0) - returns.reduce((sum, r) => sum + r.refundCents, 0),
       // Recebido por forma de pagamento, já descontadas as devoluções.
-      byMethod: Object.fromEntries(METHODS.map((method) => [method, byMethod[method] - refunds[method]])),
+      byMethod: Object.fromEntries(PAYMENT_METHODS.map((method) => [method, byMethod[method] - refunds[method]])),
       // Fiado recebido de clientes neste caixa, por forma de pagamento.
       accountReceivedByMethod: Object.fromEntries(
-        METHODS.filter((method) => method !== 'ACCOUNT').map((method) => [method, accountReceived[method]]),
+        PAYMENT_METHODS.filter((method) => method !== 'ACCOUNT').map((method) => [method, accountReceived[method]]),
       ),
       accountReceivedCents: session.customerPayments.reduce((sum, payment) => sum + payment.amountCents, 0),
       withdrawalsCents: withdrawals,
@@ -146,7 +142,7 @@ export async function getOpeningSuggestion(warehouseId: string) {
     prisma.cashSession.findFirst({
       where: { warehouseId, status: 'CLOSED' },
       orderBy: { number: 'desc' },
-      select: { keptCents: true, closedAt: true },
+      select: { keptCents: true },
     }),
   ]);
   return {

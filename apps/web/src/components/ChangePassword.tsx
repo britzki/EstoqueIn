@@ -1,13 +1,13 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, tokenStore } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 import type { Session } from '../lib/types';
 import { Button, ErrorMessage, Field, Input, Modal } from './ui';
 import { Logo } from './Logo';
 
-function ChangePasswordForm({ formId, onDone }: { formId: string; onDone?: () => void }) {
+function ChangePasswordForm({ onDone }: { onDone?: () => void }) {
   const toast = useToast();
   const { updateSession } = useAuth();
   const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirm: '' });
@@ -15,11 +15,13 @@ function ChangePasswordForm({ formId, onDone }: { formId: string; onDone?: () =>
 
   const change = useMutation({
     mutationFn: () =>
-      api.post<Session>('/auth/change-password', {
+      api.post<Session & { token: string }>('/auth/change-password', {
         currentPassword: form.currentPassword,
         newPassword: form.newPassword,
       }),
-    onSuccess: (session) => {
+    onSuccess: ({ token, ...session }) => {
+      // A troca de senha encerra as outras sessões; esta continua com o token novo.
+      tokenStore.set(token);
       updateSession(session);
       toast.success('Senha alterada');
       onDone?.();
@@ -35,7 +37,7 @@ function ChangePasswordForm({ formId, onDone }: { formId: string; onDone?: () =>
   };
 
   return (
-    <form id={formId} onSubmit={onSubmit} className="space-y-4">
+    <form onSubmit={onSubmit} className="space-y-4">
       {change.error && !Object.keys(errors).length ? <ErrorMessage error={change.error} /> : null}
       <Field label="Senha atual" required>
         {(id) => (
@@ -85,7 +87,7 @@ function ChangePasswordForm({ formId, onDone }: { formId: string; onDone?: () =>
 export function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal open onClose={onClose} title="Alterar minha senha">
-      <ChangePasswordForm formId="change-password" onDone={onClose} />
+      <ChangePasswordForm onDone={onClose} />
     </Modal>
   );
 }
@@ -101,7 +103,7 @@ export function ForcedPasswordChange() {
         <p className="mt-1 mb-6 text-sm text-slate-500">
           Você entrou com uma senha temporária. Para continuar, defina uma senha que só você conheça.
         </p>
-        <ChangePasswordForm formId="forced-change-password" />
+        <ChangePasswordForm />
         <button onClick={logout} className="mt-4 w-full text-center text-sm text-slate-500 hover:text-slate-900">
           Sair
         </button>

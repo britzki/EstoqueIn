@@ -1,7 +1,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { conflict, notFound, unprocessable } from '../../lib/errors.js';
 import { isWholeNumber, roundQty } from '../../lib/quantity.js';
-import { applyMovement } from '../stock/stock.service.js';
+import { adjustTo } from '../stock/stock.service.js';
 import { publishAlertChanges, type AlertChange } from '../alerts/alerts.service.js';
 
 interface CreateInventoryInput {
@@ -86,18 +86,28 @@ export async function countByBarcode(inventoryId: string, barcode: string, quant
   });
   if (!product) throw notFound('Produto com este código de barras');
 
-  const item = await prisma.inventoryItem.findUnique({
-    where: { inventoryId_productId: { inventoryId, productId: product.id } },
-  });
-  if (!item) throw unprocessable(`${product.name} não faz parte deste inventário`);
+  // No modo "somar", só grava se a contagem não mudou desde a leitura (dois bipes ao mesmo tempo
+  // não podem virar um só); se mudou, lê de novo e soma outra vez.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const item = await prisma.inventoryItem.findUnique({
+      where: { inventoryId_productId: { inventoryId, productId: product.id } },
+    });
+    if (!item) throw unprocessable(`${product.name} não faz parte deste inventário`);
 
-  const countedQuantity = roundQty(mode === 'add' ? (item.countedQuantity ?? 0) + quantity : quantity);
-  assertCountable(product, countedQuantity);
-  return prisma.inventoryItem.update({
-    where: { id: item.id },
-    data: { countedQuantity, countedAt: new Date() },
-    include: { product: { select: { id: true, sku: true, name: true, unit: true } } },
-  });
+    const countedQuantity = roundQty(mode === 'add' ? (item.countedQuantity ?? 0) + quantity : quantity);
+    assertCountable(product, countedQuantity);
+    const { count } = await prisma.inventoryItem.updateMany({
+      where: { id: item.id, countedQuantity: item.countedQuantity },
+      data: { countedQuantity, countedAt: new Date() },
+    });
+    if (count === 1) {
+      return prisma.inventoryItem.findUniqueOrThrow({
+        where: { id: item.id },
+        include: { product: { select: { id: true, sku: true, name: true, unit: true } } },
+      });
+    }
+  }
+  throw conflict('A contagem deste produto mudou ao mesmo tempo. Bipe de novo.');
 }
 
 /**
@@ -109,6 +119,14 @@ export async function completeInventory(inventoryId: string, userId: string) {
   await getOpenInventory(inventoryId);
 
   const result = await prisma.$transaction(async (tx) => {
+    // Marca como concluído primeiro e só se ainda estiver aberto: dois cliques (ou dois computadores)
+    // não aplicam os ajustes duas vezes.
+    const { count } = await tx.inventory.updateMany({
+      where: { id: inventoryId, status: 'OPEN' },
+      data: { status: 'COMPLETED', completedAt: new Date() },
+    });
+    if (count === 0) throw conflict('Este inventário já foi concluído ou cancelado');
+
     const items = await tx.inventoryItem.findMany({ where: { inventoryId }, include: { inventory: true } });
     const alertChanges: AlertChange[] = [];
     let adjusted = 0;
@@ -117,32 +135,24 @@ export async function completeInventory(inventoryId: string, userId: string) {
     for (const item of items) {
       if (item.countedQuantity === null) continue;
 
-      const level = await tx.stockLevel.findUnique({
-        where: { productId_warehouseId: { productId: item.productId, warehouseId: item.inventory.warehouseId } },
+      const adjustment = await adjustTo(tx, {
+        productId: item.productId,
+        warehouseId: item.inventory.warehouseId,
+        target: item.countedQuantity,
+        inventoryId,
+        reason: 'Ajuste de inventário',
+        userId,
       });
-      const difference = roundQty(item.countedQuantity - (level?.quantity ?? 0));
-
-      if (difference !== 0) {
-        const { alert } = await applyMovement(tx, {
-          type: 'ADJUSTMENT',
-          productId: item.productId,
-          warehouseId: item.inventory.warehouseId,
-          delta: difference,
-          inventoryId,
-          reason: 'Ajuste de inventário',
-          userId,
-        });
-        alertChanges.push(alert);
+      const difference = adjustment?.movement.quantity ?? 0;
+      if (adjustment) {
+        alertChanges.push(adjustment.alert);
         adjusted++;
         netDifference = roundQty(netDifference + difference);
       }
       await tx.inventoryItem.update({ where: { id: item.id }, data: { difference } });
     }
 
-    const inventory = await tx.inventory.update({
-      where: { id: inventoryId },
-      data: { status: 'COMPLETED', completedAt: new Date() },
-    });
+    const inventory = await tx.inventory.findUniqueOrThrow({ where: { id: inventoryId } });
 
     const uncounted = items.filter((item) => item.countedQuantity === null).length;
     return { inventory, summary: { totalItems: items.length, adjusted, uncounted, netDifference }, alertChanges };
@@ -154,8 +164,10 @@ export async function completeInventory(inventoryId: string, userId: string) {
 
 export async function cancelInventory(inventoryId: string) {
   await getOpenInventory(inventoryId);
-  return prisma.inventory.update({
-    where: { id: inventoryId },
+  const { count } = await prisma.inventory.updateMany({
+    where: { id: inventoryId, status: 'OPEN' },
     data: { status: 'CANCELLED', completedAt: new Date() },
   });
+  if (count === 0) throw conflict('Este inventário já foi concluído ou cancelado');
+  return prisma.inventory.findUniqueOrThrow({ where: { id: inventoryId } });
 }

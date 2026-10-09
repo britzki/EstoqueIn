@@ -2,11 +2,9 @@
  * Recuperação de acesso na versão web/servidor: gera uma senha temporária para o administrador.
  * Uso (na pasta apps/api, por quem tem acesso ao servidor):  npm run admin:reset
  */
-import { config } from 'dotenv';
+import '../config/env.js';
 import { prisma } from '../lib/prisma.js';
 import { resetAdminPassword } from '../modules/users/recovery.js';
-
-config({ quiet: true });
 
 resetAdminPassword('servidor (linha de comando)')
   .then(({ name, email, temporaryPassword }) => {

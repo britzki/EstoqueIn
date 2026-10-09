@@ -65,9 +65,12 @@ loyaltyRoutes.patch('/:id', requirePermission('settings:manage'), async (req, re
   const data = ruleUpdateSchema.parse(req.body);
   const before = await prisma.loyaltyRule.findUnique({ where: { id: param(req, 'id') } });
   if (!before) throw notFound('Cartão fidelidade');
-  if (data.productId !== undefined || data.category !== undefined) {
-    await validate({ productId: data.productId ?? null, category: data.category ?? null });
-  }
+  // Confere a regra como ela vai ficar (o que foi enviado sobre o que já existe).
+  await validate({
+    productId: data.productId !== undefined ? data.productId : before.productId,
+    category: data.category !== undefined ? data.category : before.category,
+    rewardProductId: data.rewardProductId,
+  });
   const rule = await prisma.loyaltyRule.update({ where: { id: before.id }, data, include });
   await recordUpdate(actorOf(req), {
     entity: 'LoyaltyRule',

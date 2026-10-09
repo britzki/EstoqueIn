@@ -1,5 +1,5 @@
 import type { StockAlert } from '@prisma/client';
-import type { Tx } from '../../lib/prisma.js';
+import { prisma, type Tx } from '../../lib/prisma.js';
 import { domainEvents } from '../../lib/events.js';
 
 const SEVERITY = { LOW_STOCK: 1, OUT_OF_STOCK: 2, NEGATIVE_STOCK: 3 } as const;
@@ -28,12 +28,13 @@ export async function evaluateStockAlert(
 ): Promise<AlertChange> {
   const level = await tx.stockLevel.findUnique({
     where: { productId_warehouseId: { productId, warehouseId } },
-    include: { product: { select: { minStock: true } } },
+    include: { product: { select: { minStock: true, isKit: true } } },
   });
   if (!level) return { kind: 'none' };
 
   const threshold = level.minQuantity ?? level.product.minStock;
-  const breached = level.quantity < 0 || (threshold > 0 && level.quantity <= threshold);
+  // Kit não tem estoque próprio (o saldo é dos componentes): um alerta antigo dele é resolvido.
+  const breached = !level.product.isKit && (level.quantity < 0 || (threshold > 0 && level.quantity <= threshold));
   const open = await tx.stockAlert.findFirst({ where: { productId, warehouseId, status: 'OPEN' } });
 
   if (breached) {
@@ -81,4 +82,15 @@ export function publishAlertChanges(changes: AlertChange[]) {
       domainEvents.emit('alert.resolved', { alertId: change.alert.id });
     }
   }
+}
+
+/** Reavalia os alertas de um produto (todos os estoques ou um só), ex.: depois de mudar o mínimo. */
+export async function reevaluateProductAlerts(productId: string, warehouseId?: string) {
+  const changes = await prisma.$transaction(async (tx) => {
+    const levels = await tx.stockLevel.findMany({ where: { productId, warehouseId }, select: { warehouseId: true } });
+    const results: AlertChange[] = [];
+    for (const level of levels) results.push(await evaluateStockAlert(tx, productId, level.warehouseId));
+    return results;
+  });
+  publishAlertChanges(changes);
 }

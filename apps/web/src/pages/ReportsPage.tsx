@@ -15,8 +15,7 @@ import { SalesReport } from './SalesReport';
 import { MonthlyReport } from './MonthlyReport';
 import { PurchaseSuggestionReport, StaleProductsReport } from './PurchasingReports';
 import { api, type Query } from '../lib/api';
-import { useCategories, useWarehouses } from '../lib/hooks';
-import { useToast } from '../lib/toast';
+import { useCategories, useDownload, useWarehouses } from '../lib/hooks';
 import { dayEndIso, dayStartIso, formatMoney, formatNumber, formatPercent, toDateInput } from '../lib/format';
 import {
   Badge,
@@ -37,12 +36,14 @@ import {
   type Tone,
 } from '../components/ui';
 
-type Report = 'monthly' | 'sales' | 'position' | 'purchase' | 'stale' | 'movements' | 'abc';
+const REPORTS = ['monthly', 'sales', 'position', 'purchase', 'stale', 'movements', 'abc'] as const;
+type Report = (typeof REPORTS)[number];
 
 export function ReportsPage() {
   // ?tab=purchase abre direto a sugestão de compra (link da tela de pedidos).
   const [params] = useSearchParams();
-  const [report, setReport] = useState<Report>(() => (params.get('tab') as Report | null) ?? 'sales');
+  // Aba pedida no link (?tab=...), se existir; senão, Vendas.
+  const [report, setReport] = useState<Report>(() => REPORTS.find((value) => value === params.get('tab')) ?? 'sales');
 
   return (
     <>
@@ -77,24 +78,14 @@ export function ReportsPage() {
 }
 
 export function ExportButton({ path, filename, query }: { path: string; filename: string; query: Query }) {
-  const toast = useToast();
-  const [loading, setLoading] = useState(false);
+  const { download, downloading } = useDownload();
   return (
     <Button
       variant="secondary"
       size="sm"
       icon={<Download className="size-4" />}
-      loading={loading}
-      onClick={async () => {
-        setLoading(true);
-        try {
-          await api.download(path, filename, { ...query, format: 'csv' });
-        } catch (error) {
-          toast.error('Falha ao exportar', (error as Error).message);
-        } finally {
-          setLoading(false);
-        }
-      }}
+      loading={downloading}
+      onClick={() => download(path, filename, { ...query, format: 'csv' })}
     >
       CSV
     </Button>

@@ -5,7 +5,7 @@ import { ChevronLeft, CircleCheck, Download, FileSpreadsheet, Upload } from 'luc
 import clsx from 'clsx';
 import { api } from '../../lib/api';
 import { useToast } from '../../lib/toast';
-import { useActiveWarehouses } from '../../lib/hooks';
+import { invalidateStock, useActiveWarehouses, useDownload } from '../../lib/hooks';
 import { formatNumber } from '../../lib/format';
 import {
   Badge,
@@ -45,6 +45,7 @@ const COLUMNS = [
 ];
 
 export function ImportProductsPage() {
+  const { download, downloading } = useDownload();
   const toast = useToast();
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -64,19 +65,19 @@ export function ImportProductsPage() {
     mutationFn: () => api.upload<ImportReport>('/products/import', file!, { warehouseId: activeWarehouse }),
     onSuccess: (report) => {
       toast.success('Importação concluída', `${report.created} criados, ${report.updated} atualizados.`);
-      for (const key of ['product', 'alerts', 'dashboard', 'movements', 'warehouses']) {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      }
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      invalidateStock(queryClient);
       queryClient.invalidateQueries({ queryKey: ['categories'] });
     },
   });
 
-  const choose = (selected: File | undefined) => {
+  // Guarda uma cópia do conteúdo: conferência e importação enviam exatamente o mesmo arquivo,
+  // mesmo que ele seja editado no Excel entre um passo e outro.
+  const choose = async (selected: File | undefined) => {
     if (!selected) return;
-    setFile(selected);
+    const snapshot = new File([await selected.arrayBuffer()], selected.name, { type: selected.type });
+    setFile(snapshot);
     commit.reset();
-    preview.mutate({ file: selected, warehouseId: activeWarehouse });
+    preview.mutate({ file: snapshot, warehouseId: activeWarehouse });
   };
 
   const changeWarehouse = (id: string) => {
@@ -88,7 +89,7 @@ export function ImportProductsPage() {
   const onDrop = (event: DragEvent) => {
     event.preventDefault();
     setDragging(false);
-    choose(event.dataTransfer.files[0]);
+    void choose(event.dataTransfer.files[0]);
   };
 
   const report = commit.data ?? preview.data;
@@ -119,7 +120,8 @@ export function ImportProductsPage() {
             <Button
               variant="secondary"
               icon={<Download className="size-4" />}
-              onClick={() => api.download('/products/import/template', 'modelo-importacao-produtos.csv')}
+              loading={downloading}
+              onClick={() => download('/products/import/template', 'modelo-importacao-produtos.csv')}
             >
               Baixar modelo
             </Button>
@@ -161,7 +163,11 @@ export function ImportProductsPage() {
                 type="file"
                 accept=".csv,text/csv"
                 className="hidden"
-                onChange={(e) => choose(e.target.files?.[0])}
+                onChange={(e) => {
+                  void choose(e.target.files?.[0]);
+                  // Permite escolher o mesmo arquivo de novo depois de corrigi-lo.
+                  e.target.value = '';
+                }}
               />
             </div>
           </Card>

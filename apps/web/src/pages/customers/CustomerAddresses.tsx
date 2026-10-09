@@ -39,6 +39,7 @@ export function CustomerAddresses({ customerId, addresses }: { customerId: strin
       {addresses.length === 0 && !draft && (
         <p className="text-sm text-slate-500">Nenhum endereço. Ele também é salvo na primeira venda para entrega.</p>
       )}
+      {remove.error && <ErrorMessage error={remove.error} />}
       <ul className="space-y-2">
         {addresses.map((address) => (
           <li
@@ -57,6 +58,7 @@ export function CustomerAddresses({ customerId, addresses }: { customerId: strin
             {can('sales:create') && (
               <button
                 type="button"
+                disabled={remove.isPending}
                 onClick={() => remove.mutate(address.id)}
                 className="rounded-md p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
                 aria-label="Apagar endereço"

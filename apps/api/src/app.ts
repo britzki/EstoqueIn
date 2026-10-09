@@ -38,7 +38,23 @@ export function createApp({ webDist }: AppOptions = {}) {
   const app = express();
 
   app.disable('x-powered-by');
-  app.use(helmet({ contentSecurityPolicy: false }));
+  // Política de conteúdo para a interface servida por esta API (programa instalado e hospedagem):
+  // só scripts do próprio sistema, nada de scripts injetados. Os <style> de impressão (tamanho da
+  // página) precisam de 'unsafe-inline' em estilos. Sem "upgrade-insecure-requests": no computador
+  // da loja a interface roda em http://127.0.0.1, e trocar para https quebraria tudo.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          'upgrade-insecure-requests': null,
+          'style-src': ["'self'", "'unsafe-inline'"],
+          'img-src': ["'self'", 'data:', 'blob:'],
+          'font-src': ["'self'", 'data:'],
+          'frame-ancestors': ["'none'"],
+        },
+      },
+    }),
+  );
   app.use(cors({ origin: env.CORS_ORIGIN.split(',').map((origin) => origin.trim()) }));
   app.use(express.json({ limit: '1mb' }));
 

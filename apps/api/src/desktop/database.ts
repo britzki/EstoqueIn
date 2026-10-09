@@ -23,6 +23,25 @@ export async function configureSqlite() {
   await prisma.$executeRawUnsafe('PRAGMA foreign_keys = ON');
 }
 
+const pad = (value: number) => String(value).padStart(2, '0');
+
+/** "202610091430": data e hora locais, para o nome dos arquivos de backup (o dono escolhe pelo nome). */
+const fileStamp = (date = new Date()) =>
+  `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}`;
+
+/** Backups de uma pasta com o prefixo informado, do mais novo para o mais antigo. */
+function listBackups(dir: string, prefix: string) {
+  return readdirSync(dir)
+    .filter((file) => file.startsWith(prefix) && file.endsWith('.db'))
+    .map((file) => ({ file, time: statSync(join(dir, file)).mtimeMs }))
+    .sort((a, b) => b.time - a.time);
+}
+
+/** Apaga os mais antigos, deixando os `keep` mais recentes (contando o que acabou de ser criado). */
+function pruneBackups(dir: string, olderFirst: Array<{ file: string }>, keep: number) {
+  for (const old of olderFirst.slice(keep - 1)) rmSync(join(dir, old.file), { force: true });
+}
+
 // O nome antigo do produto é mantido aqui de propósito: bancos já instalados usam esta tabela.
 const MIGRATIONS_TABLE = '_stockflow_migrations';
 
@@ -59,8 +78,7 @@ export async function applyMigrations(migrationsDir: string, options: { backupsD
 
   // Banco já em uso recebendo mudança de estrutura: guarda uma cópia antes de alterar.
   if (pending.length > 0 && applied.size > 0 && options.backupsDir) {
-    const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-    await backupDatabase(join(options.backupsDir, `estoquein-antes-da-atualizacao-${stamp}.db`));
+    await backupDatabase(join(options.backupsDir, `estoquein-antes-da-atualizacao-${fileStamp()}.db`));
   }
 
   for (const name of pending) {
@@ -97,10 +115,19 @@ export async function applyMigrations(migrationsDir: string, options: { backupsD
 
 const isForeignKeysPragma = (statement: string) => /^PRAGMA\s+foreign_keys\s*=/i.test(statement);
 
-/** Cópia consistente do banco, mesmo com o sistema em uso (VACUUM INTO). */
+/**
+ * Cópia consistente do banco, mesmo com o sistema em uso (VACUUM INTO). Grava num arquivo provisório e
+ * só no fim troca pelo destino: se faltar espaço ou luz no meio, o backup anterior com esse nome continua lá.
+ */
 export async function backupDatabase(destination: string) {
-  rmSync(destination, { force: true });
-  await prisma.$executeRawUnsafe('VACUUM INTO ?', destination);
+  const temporary = `${destination}.tmp`;
+  rmSync(temporary, { force: true });
+  try {
+    await prisma.$executeRawUnsafe('VACUUM INTO ?', temporary);
+    renameSync(temporary, destination);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
 }
 
 /** Confere se o arquivo é um banco SQLite (para não restaurar um arquivo qualquer). */
@@ -156,18 +183,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export async function runAutomaticBackup(backupsDir: string, keep = 10) {
   if ((await prisma.user.count()) === 0) return null;
 
-  const existing = readdirSync(backupsDir)
-    .filter((file) => file.startsWith(AUTO_PREFIX) && file.endsWith('.db'))
-    .map((file) => ({ file, time: statSync(join(backupsDir, file)).mtimeMs }))
-    .sort((a, b) => b.time - a.time);
-
+  const existing = listBackups(backupsDir, AUTO_PREFIX);
   if (existing[0] && Date.now() - existing[0].time < DAY_MS) return null;
 
-  const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-  const destination = join(backupsDir, `${AUTO_PREFIX}${stamp}.db`);
+  const destination = join(backupsDir, `${AUTO_PREFIX}${fileStamp()}.db`);
   await backupDatabase(destination);
-
-  for (const old of existing.slice(keep - 1)) rmSync(join(backupsDir, old.file), { force: true });
+  pruneBackups(backupsDir, existing, keep);
   return destination;
 }
 
@@ -183,14 +204,10 @@ export async function runExternalBackup(externalDir: string, tempDir: string, ke
   if (!existsSync(externalDir)) throw new Error('Pasta de cópia externa não encontrada (pendrive desconectado?)');
   if ((await prisma.user.count()) === 0) return null;
 
-  const existing = readdirSync(externalDir)
-    .filter((file) => file.startsWith(EXTERNAL_PREFIX) && file.endsWith('.db'))
-    .map((file) => ({ file, time: statSync(join(externalDir, file)).mtimeMs }))
-    .sort((a, b) => b.time - a.time);
+  const existing = listBackups(externalDir, EXTERNAL_PREFIX);
   if (!force && existing[0] && Date.now() - existing[0].time < DAY_MS) return null;
 
-  const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-  const name = `${EXTERNAL_PREFIX}${stamp}.db`;
+  const name = `${EXTERNAL_PREFIX}${fileStamp()}.db`;
   const local = join(tempDir, `.${name}.tmp`);
   const partial = join(externalDir, `${name}.parcial`);
   try {
@@ -202,8 +219,11 @@ export async function runExternalBackup(externalDir: string, tempDir: string, ke
     rmSync(partial, { force: true });
   }
 
-  const current = existing.filter((entry) => entry.file !== name);
-  for (const old of current.slice(keep - 1)) rmSync(join(externalDir, old.file), { force: true });
+  pruneBackups(
+    externalDir,
+    existing.filter((entry) => entry.file !== name),
+    keep,
+  );
   return join(externalDir, name);
 }
 

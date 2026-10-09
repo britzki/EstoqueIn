@@ -10,7 +10,8 @@ export const nfeRoutes = Router();
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  // Um arquivo e, na importação, o campo "decisions": nada além disso fica na memória.
+  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 1 },
   fileFilter: (_req, file, callback) => {
     const isXml = file.originalname.toLowerCase().endsWith('.xml') || file.mimetype.includes('xml');
     if (!isXml) return callback(badRequest('Envie o arquivo .xml da NF-e'));
@@ -20,10 +21,11 @@ const upload = multer({
 
 const readXml = (file?: Express.Multer.File) => {
   if (!file) throw badRequest('Envie o XML no campo "file"');
-  return file.buffer.toString('utf8').replace(/^﻿/, '');
+  return file.buffer.toString('utf8').replace(/^\uFEFF/, '');
 };
 
-nfeRoutes.get('/', async (_req, res) => {
+// Valores das notas de compra: só para quem dá entrada no estoque.
+nfeRoutes.get('/', requirePermission('stock:move'), async (_req, res) => {
   const imports = await prisma.nfeImport.findMany({
     include: {
       supplier: { select: { id: true, name: true } },

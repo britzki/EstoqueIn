@@ -1,20 +1,20 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { notFound, unprocessable } from '../../lib/errors.js';
 import { currentUser } from '../../middleware/auth.js';
 import { param } from '../../lib/http.js';
 import { actorOf, diff, recordAudit, recordUpdate } from '../../lib/audit.js';
+import { emailSchema, hashPassword, passwordSchema } from '../../auth/passwords.js';
 
 export const usersRoutes = Router();
 
 const roles = ['ADMIN', 'MANAGER', 'OPERATOR', 'VIEWER'] as const;
-const password = z.string().min(8, 'A senha deve ter pelo menos 8 caracteres').max(72);
+const password = passwordSchema();
 
 const createSchema = z.object({
   name: z.string().trim().min(2, 'Informe o nome').max(120),
-  email: z.string().trim().toLowerCase().pipe(z.email('E-mail inválido')),
+  email: emailSchema,
   role: z.enum(roles),
   password,
 });
@@ -36,7 +36,7 @@ usersRoutes.get('/', async (_req, res) => {
 usersRoutes.post('/', async (req, res) => {
   const { password: plain, ...data } = createSchema.parse(req.body);
   const user = await prisma.user.create({
-    data: { ...data, passwordHash: await bcrypt.hash(plain, 10) },
+    data: { ...data, passwordHash: await hashPassword(plain) },
     select: publicFields,
   });
   await recordAudit(actorOf(req), {
@@ -60,8 +60,16 @@ usersRoutes.patch('/:id', async (req, res) => {
 
   const user = await prisma.user.update({
     where: { id: target.id },
-    // Senha definida por outra pessoa é temporária: o usuário troca no próximo acesso.
-    data: { ...data, ...(plain && { passwordHash: await bcrypt.hash(plain, 10), mustChangePassword: !isSelf }) },
+    // Senha definida por outra pessoa é temporária: o usuário troca no próximo acesso, e as sessões
+    // abertas com a senha antiga caem (ex.: senha vazada). A sessão do próprio administrador continua.
+    data: {
+      ...data,
+      ...(plain && {
+        passwordHash: await hashPassword(plain),
+        mustChangePassword: !isSelf,
+        ...(!isSelf && { tokenVersion: { increment: 1 } }),
+      }),
+    },
     select: publicFields,
   });
   await recordUpdate(actorOf(req), {

@@ -54,6 +54,8 @@ model User {
   active             Boolean  @default(true)
   // Senha temporária (ex.: após redefinição): o sistema exige a troca no próximo acesso.
   mustChangePassword Boolean  @default(false)
+  // Muda a cada troca de senha: logins feitos antes disso deixam de valer.
+  tokenVersion       Int      @default(0)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -359,6 +361,7 @@ model Sale {
   @@index([createdAt])
   @@index([status, createdAt])
   @@index([customerId])
+  @@index([cashSessionId])
 }
 
 model SaleItem {
@@ -538,6 +541,7 @@ model SaleReturn {
 
   @@index([saleId])
   @@index([createdAt])
+  @@index([cashSessionId])
 }
 
 model SaleReturnItem {
@@ -574,6 +578,7 @@ model CustomerPayment {
   cancelledBy   User?        @relation("CustomerPaymentCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
 
   @@index([customerId, createdAt])
+  @@index([cashSessionId])
 }
 
 enum PurchaseOrderStatus {

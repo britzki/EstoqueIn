@@ -31,7 +31,7 @@ export function registerAlertNotifier() {
       if (env.NODE_ENV !== 'test') console.info(`[alerta] ${text}`);
       if (!env.ALERT_WEBHOOK_URL) return;
 
-      await fetch(env.ALERT_WEBHOOK_URL, {
+      const response = await fetch(env.ALERT_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // "text" (Slack) e "content" (Discord) permitem usar o webhook direto nessas ferramentas.
@@ -52,6 +52,8 @@ export function registerAlertNotifier() {
         }),
         signal: AbortSignal.timeout(5000),
       });
+      // URL errada ou token revogado não dá exceção: fica registrado no log para o suporte.
+      if (!response.ok) console.error(`[alerta] webhook respondeu ${response.status}`);
     } catch (error) {
       console.error('[alerta] falha ao notificar', error);
     }

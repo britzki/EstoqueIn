@@ -22,10 +22,13 @@ jobs:
         run: npx prisma generate
         working-directory: apps/api
 
+      - name: Formatação (Prettier)
+        run: npm run format:check
+
       - name: Checagem de tipos
         run: npm run typecheck
 
-      - name: Testes da API
+      - name: Testes (API e interface)
         run: npm test
 
       - name: Build do front-end

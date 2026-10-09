@@ -1,21 +1,17 @@
-import { PAYMENT_LABEL, formatDateTime, formatMoneyPlain } from '../../lib/format';
-import type { CashDetail, PaymentMethod, StoreSettings } from '../../lib/types';
+import { PAYMENT_LABEL, PAYMENT_METHODS, RECEIVING_METHODS, formatDateTime, formatMoneyPlain } from '../../lib/format';
+import { SLIP_ROW, SlipFrame, SlipRule } from '../../components/Slip';
+import type { CashDetail, StoreSettings } from '../../lib/types';
 
 const money = formatMoneyPlain;
-const METHODS: PaymentMethod[] = ['CASH', 'PIX', 'DEBIT', 'CREDIT', 'OTHER', 'ACCOUNT'];
 
 /** Comprovante de fechamento de caixa para a bobina: fica guardado junto com o dinheiro. */
 export function CashSlip({ cash, settings }: { cash: CashDetail; settings: StoreSettings }) {
-  const narrow = settings.receiptWidth === 58;
-  const row = 'flex justify-between gap-2';
-  const rule = <div className="my-1.5 border-t border-dashed border-black" />;
+  const row = SLIP_ROW;
+  const rule = <SlipRule />;
   const { summary } = cash;
 
   return (
-    <div
-      className="bg-white font-mono leading-tight text-black"
-      style={{ width: narrow ? '48mm' : '72mm', fontSize: narrow ? '10px' : '11.5px', padding: '2mm' }}
-    >
+    <SlipFrame settings={settings}>
       <p className="text-center text-[1.2em] font-bold uppercase">{settings.storeName}</p>
       <p className="text-center font-bold">FECHAMENTO DE CAIXA Nº {cash.number}</p>
       {rule}
@@ -47,7 +43,7 @@ export function CashSlip({ cash, settings }: { cash: CashDetail; settings: Store
         </div>
       )}
       {rule}
-      {METHODS.filter((method) => summary.byMethod[method]).map((method) => (
+      {PAYMENT_METHODS.filter((method) => summary.byMethod[method]).map((method) => (
         <div key={method} className={row}>
           <span>{PAYMENT_LABEL[method]}</span>
           <span>{money(summary.byMethod[method] ?? 0)}</span>
@@ -56,14 +52,12 @@ export function CashSlip({ cash, settings }: { cash: CashDetail; settings: Store
       {rule}
       {summary.accountReceivedCents > 0 && (
         <>
-          {METHODS.filter((method) => method !== 'ACCOUNT' && summary.accountReceivedByMethod[method as 'CASH']).map(
-            (method) => (
-              <div key={method} className={row}>
-                <span>Fiado recebido ({PAYMENT_LABEL[method]})</span>
-                <span>{money(summary.accountReceivedByMethod[method as 'CASH'])}</span>
-              </div>
-            ),
-          )}
+          {RECEIVING_METHODS.filter((method) => summary.accountReceivedByMethod[method]).map((method) => (
+            <div key={method} className={row}>
+              <span>Fiado recebido ({PAYMENT_LABEL[method]})</span>
+              <span>{money(summary.accountReceivedByMethod[method])}</span>
+            </div>
+          ))}
           {rule}
         </>
       )}
@@ -117,6 +111,6 @@ export function CashSlip({ cash, settings }: { cash: CashDetail; settings: Store
       {rule}
       <p className="mt-4 text-center">_______________________</p>
       <p className="text-center">Assinatura</p>
-    </div>
+    </SlipFrame>
   );
 }

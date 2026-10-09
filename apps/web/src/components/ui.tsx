@@ -1,8 +1,9 @@
-import { useEffect, useId, type ComponentProps, type ReactNode } from 'react';
+import { useId, type ComponentProps, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router';
 import { ChevronLeft, ChevronRight, LoaderCircle, X } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { useEscapeKey } from '../lib/hooks';
 
 /* ---------- Botão ---------- */
 
@@ -376,12 +377,7 @@ export function Modal({
   footer?: ReactNode;
   size?: 'md' | 'lg';
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  useEscapeKey(open, onClose);
 
   if (!open) return null;
 

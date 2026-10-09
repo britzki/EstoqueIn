@@ -3,6 +3,15 @@ import { z } from 'zod';
 
 config({ quiet: true });
 
+const isValidTimeZone = (timeZone: string) => {
+  try {
+    new Intl.DateTimeFormat('en', { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3333),
@@ -15,8 +24,14 @@ const schema = z.object({
       (value) => process.env.NODE_ENV !== 'production' || !value.startsWith('troque-este-segredo'),
       'Defina um JWT_SECRET próprio em produção',
     ),
-  JWT_EXPIRES_IN: z.string().default('8h'),
-  APP_TIMEZONE: z.string().default('America/Sao_Paulo'),
+  JWT_EXPIRES_IN: z
+    .string()
+    .regex(/^\d+\s*(ms|s|m|h|d|w|y)?$/, 'Use, por exemplo, 8h, 30m ou 1d')
+    .default('8h'),
+  APP_TIMEZONE: z
+    .string()
+    .refine(isValidTimeZone, 'Fuso horário desconhecido (ex.: America/Sao_Paulo)')
+    .default('America/Sao_Paulo'),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   ALERT_WEBHOOK_URL: z.union([z.url(), z.literal('')]).default(''),
   BARCODE_LOOKUP_ENABLED: z

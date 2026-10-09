@@ -5,8 +5,8 @@ import { badRequest } from '../../lib/errors.js';
 import { parseMoneyToCents } from '../../lib/money.js';
 import { FRACTIONAL_UNITS, hasValidPrecision, isWholeNumber, roundQty } from '../../lib/quantity.js';
 import { optionalText } from '../../lib/validation.js';
-import { applyMovement } from '../stock/stock.service.js';
-import { publishAlertChanges, type AlertChange } from '../alerts/alerts.service.js';
+import { adjustTo } from '../stock/stock.service.js';
+import { publishAlertChanges, reevaluateProductAlerts, type AlertChange } from '../alerts/alerts.service.js';
 import { barcodeSchema, skuSchema } from './products.schemas.js';
 
 const MAX_ROWS = 5000;
@@ -73,7 +73,7 @@ const HEADER_ALIASES: Record<string, Field> = {
 const normalizeHeader = (header: string) =>
   header
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_|_$/g, '');
@@ -201,7 +201,16 @@ export async function importProducts(content: string, options: ImportOptions): P
   }
 
   const [existing, suppliers, warehouse] = await Promise.all([
-    prisma.product.findMany({ select: { sku: true, barcode: true, scaleCode: true, fractional: true } }),
+    prisma.product.findMany({
+      select: {
+        sku: true,
+        barcode: true,
+        scaleCode: true,
+        fractional: true,
+        isKit: true,
+        stockLevels: { select: { quantity: true } },
+      },
+    }),
     prisma.supplier.findMany({ where: { document: { not: null } }, select: { id: true, document: true } }),
     warehouseId ? prisma.warehouse.findUnique({ where: { id: warehouseId } }) : null,
   ]);
@@ -268,6 +277,15 @@ export async function importProducts(content: string, options: ImportOptions): P
     // Vale a marcação da planilha; sem ela, a unidade (KG, L...) ou o cadastro atual decidem.
     const fractional =
       row.fractional ?? (row.unit ? FRACTIONAL_UNITS.includes(row.unit) : (current?.fractional ?? false));
+    // Mesmas regras do cadastro de produtos (o que vale na tela vale na planilha).
+    if (current?.isKit && (row.stock !== undefined || fractional)) {
+      fail('Kit não tem saldo próprio e é vendido por unidade (o estoque é dos componentes)', row.sku);
+      continue;
+    }
+    if (current?.fractional && !fractional && current.stockLevels.some((level) => !isWholeNumber(level.quantity))) {
+      fail('Produto com saldo fracionado não pode passar a ser controlado por unidade', row.sku);
+      continue;
+    }
     if (row.stock !== undefined && !fractional && !isWholeNumber(row.stock)) {
       fail('Saldo com casas decimais em produto controlado por unidade (marque "fracionado" ou use KG)', row.sku);
       continue;
@@ -323,22 +341,15 @@ export async function importProducts(content: string, options: ImportOptions): P
         });
         if (stock === undefined || !warehouseId) continue;
 
-        const level = await tx.stockLevel.findUnique({
-          where: { productId_warehouseId: { productId: product.id, warehouseId } },
-        });
-        const delta = roundQty(stock - (level?.quantity ?? 0));
-        if (delta === 0) continue;
-
-        const { alert } = await applyMovement(tx, {
-          type: 'ADJUSTMENT',
+        const adjustment = await adjustTo(tx, {
           productId: product.id,
           warehouseId,
-          delta,
+          target: stock,
           unitCostCents: product.costCents,
           reason: 'Saldo informado na importação de planilha',
           userId,
         });
-        changes.push(alert);
+        if (adjustment) changes.push(adjustment.alert);
       }
       return changes;
     },
@@ -346,11 +357,18 @@ export async function importProducts(content: string, options: ImportOptions): P
   );
 
   publishAlertChanges(alerts);
+  // Estoque mínimo alterado pela planilha: abre ou resolve os alertas dos produtos atualizados.
+  for (const { sku, data } of operations) {
+    const current = existingBySku.get(sku);
+    if (data.minStock === undefined || !current) continue;
+    const product = await prisma.product.findUnique({ where: { sku }, select: { id: true } });
+    if (product) await reevaluateProductAlerts(product.id);
+  }
   return report;
 }
 
 export const IMPORT_TEMPLATE =
-  '﻿' +
+  '\uFEFF' +
   [
     'sku;nome;codigo_barras;categoria;unidade;preco_custo;preco_venda;estoque_minimo;saldo;fracionado;codigo_balanca;descricao',
     'COL-M;Coleira ajustável M;;Acessórios;UN;15,00;34,90;2;12;;;',

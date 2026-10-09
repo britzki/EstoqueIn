@@ -44,7 +44,7 @@ export function KitEditor({ product, editable }: { product: ProductDetail; edita
   const save = useMutation({
     mutationFn: () =>
       api.put(`/products/${product.id}/kit`, {
-        items: lines.map((line) => ({ productId: line.productId, quantity: Number(line.quantity.replace(',', '.')) })),
+        items: lines.map((line) => ({ productId: line.productId, quantity: Number(line.quantity) })),
       }),
     onSuccess: () => {
       toast.success('Kit salvo');
@@ -70,8 +70,8 @@ export function KitEditor({ product, editable }: { product: ProductDetail; edita
     ]);
   };
 
-  const cost = lines.reduce((sum, line) => sum + (Number(line.quantity.replace(',', '.')) || 0) * line.costCents, 0);
-  const valid = lines.length > 0 && lines.every((line) => Number(line.quantity.replace(',', '.')) > 0);
+  const cost = lines.reduce((sum, line) => sum + (Number(line.quantity) || 0) * line.costCents, 0);
+  const valid = lines.length > 0 && lines.every((line) => Number(line.quantity) > 0);
 
   return (
     <Card className="lg:col-span-2">

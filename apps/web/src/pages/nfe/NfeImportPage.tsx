@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleCheckBig, FileUp, ReceiptText, TriangleAlert } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { useActiveWarehouses, useCategories } from '../../lib/hooks';
+import { invalidateStock, useActiveWarehouses, useCategories } from '../../lib/hooks';
 import { useToast } from '../../lib/toast';
 import { cn } from '../../lib/cn';
 import { formatDate, formatDateTime, formatMoney, formatNumber, parseMoneyInput } from '../../lib/format';
@@ -75,7 +75,8 @@ export function NfeImportPage() {
         return {
           index: item.index,
           action: decision.action,
-          conversionFactor: Number(decision.conversionFactor),
+          // Item pulado não entra no estoque: o fator dele (mesmo vazio) não importa.
+          conversionFactor: decision.action === 'skip' ? 1 : Number(decision.conversionFactor),
           productId: decision.action === 'link' ? decision.product?.id : undefined,
           product:
             decision.action === 'create'
@@ -100,19 +101,9 @@ export function NfeImportPage() {
         `NF ${result.number} importada`,
         `${result.summary.items} itens, ${formatNumber(result.summary.units)} unidades em estoque.`,
       );
-      for (const key of [
-        'products',
-        'product',
-        'alerts',
-        'dashboard',
-        'movements',
-        'warehouses',
-        'suppliers',
-        'nfe',
-        'categories',
-      ]) {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      }
+      invalidateStock(queryClient);
+      // A nota também cadastra fornecedores, produtos (e suas categorias) e entra no histórico de notas.
+      for (const key of ['suppliers', 'nfe', 'categories']) queryClient.invalidateQueries({ queryKey: [key] });
     },
   });
 

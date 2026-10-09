@@ -1,13 +1,13 @@
 import { Ban, Link2, PackagePlus } from 'lucide-react';
 import { cn } from '../../lib/cn';
-import { FRACTIONAL_UNITS, formatMoney, formatNumber, roundQty, UNITS } from '../../lib/format';
+import { FRACTIONAL_UNITS, formatMoney, formatNumber, parseMoneyInput, roundQty, UNITS } from '../../lib/format';
 import { ProductPicker } from '../../components/ProductPicker';
 import { Badge, DecimalInput, Field, Input, Select, Tabs } from '../../components/ui';
 import type { Action, ItemDecision, NfePreviewItem } from './types';
 
 /** Quantidade que entra no estoque (nota × fator) e o custo por unidade do estoque. */
 export function computeEntry(item: NfePreviewItem, decision: ItemDecision) {
-  const factor = Number(String(decision.conversionFactor).replace(',', '.'));
+  const factor = Number(decision.conversionFactor);
   const validFactor = Number.isFinite(factor) && factor > 0;
   const quantity = roundQty(item.quantity * (validFactor ? factor : 1));
   // Só produtos vendidos por peso/medida aceitam quantidade com casas decimais.
@@ -29,6 +29,10 @@ export function itemProblem(item: NfePreviewItem, decision: ItemDecision) {
   if (decision.action === 'link' && !decision.product) return 'Escolha o produto';
   if (decision.action === 'create' && (!decision.create.sku.trim() || decision.create.name.trim().length < 2)) {
     return 'Informe SKU e nome';
+  }
+  // Preço vazio fica para depois; preço digitado errado não pode virar R$ 0,00.
+  if (decision.action === 'create' && decision.create.price.trim() && parseMoneyInput(decision.create.price) === null) {
+    return 'Preço de venda inválido';
   }
   const entry = computeEntry(item, decision);
   if (!entry.validFactor) return 'Fator de conversão inválido';

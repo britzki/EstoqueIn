@@ -1,4 +1,4 @@
-import { lazy, type ReactNode } from 'react';
+import { lazy, type ComponentType, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router';
 import { useAuth } from './lib/auth';
 import type { Permission } from './lib/types';
@@ -9,44 +9,36 @@ import { SetupPage } from './pages/SetupPage';
 import { ForcedPasswordChange } from './components/ChangePassword';
 import { ShieldCheck } from 'lucide-react';
 
-// Cada página vira um arquivo separado, carregado só quando acessada.
-const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
-const ProductsPage = lazy(() => import('./pages/products/ProductsPage').then((m) => ({ default: m.ProductsPage })));
-const ProductDetailPage = lazy(() =>
-  import('./pages/products/ProductDetailPage').then((m) => ({ default: m.ProductDetailPage })),
-);
-const ImportProductsPage = lazy(() =>
-  import('./pages/products/ImportProductsPage').then((m) => ({ default: m.ImportProductsPage })),
-);
-const SuppliersPage = lazy(() => import('./pages/SuppliersPage').then((m) => ({ default: m.SuppliersPage })));
-const WarehousesPage = lazy(() => import('./pages/WarehousesPage').then((m) => ({ default: m.WarehousesPage })));
-const NewMovementPage = lazy(() =>
-  import('./pages/movements/NewMovementPage').then((m) => ({ default: m.NewMovementPage })),
-);
-const NfeImportPage = lazy(() => import('./pages/nfe/NfeImportPage').then((m) => ({ default: m.NfeImportPage })));
-const MovementsPage = lazy(() => import('./pages/movements/MovementsPage').then((m) => ({ default: m.MovementsPage })));
-const AlertsPage = lazy(() => import('./pages/AlertsPage').then((m) => ({ default: m.AlertsPage })));
-const InventoriesPage = lazy(() =>
-  import('./pages/inventory/InventoriesPage').then((m) => ({ default: m.InventoriesPage })),
-);
-const InventoryDetailPage = lazy(() =>
-  import('./pages/inventory/InventoryDetailPage').then((m) => ({ default: m.InventoryDetailPage })),
-);
-const ReportsPage = lazy(() => import('./pages/ReportsPage').then((m) => ({ default: m.ReportsPage })));
-const NewSalePage = lazy(() => import('./pages/sales/NewSalePage').then((m) => ({ default: m.NewSalePage })));
-const SalesPage = lazy(() => import('./pages/sales/SalesPage').then((m) => ({ default: m.SalesPage })));
-const CashPage = lazy(() => import('./pages/cash/CashPage').then((m) => ({ default: m.CashPage })));
-const CustomersPage = lazy(() => import('./pages/CustomersPage').then((m) => ({ default: m.CustomersPage })));
-const PurchaseOrdersPage = lazy(() =>
-  import('./pages/purchasing/PurchaseOrdersPage').then((m) => ({ default: m.PurchaseOrdersPage })),
-);
-const PromotionsPage = lazy(() => import('./pages/PromotionsPage').then((m) => ({ default: m.PromotionsPage })));
-const DeliveriesPage = lazy(() => import('./pages/DeliveriesPage').then((m) => ({ default: m.DeliveriesPage })));
-const BillsPage = lazy(() => import('./pages/BillsPage').then((m) => ({ default: m.BillsPage })));
-const HelpPage = lazy(() => import('./pages/HelpPage').then((m) => ({ default: m.HelpPage })));
-const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
-const AuditPage = lazy(() => import('./pages/AuditPage').then((m) => ({ default: m.AuditPage })));
-const UsersPage = lazy(() => import('./pages/UsersPage').then((m) => ({ default: m.UsersPage })));
+/** Cada página vira um arquivo separado, carregado só quando acessada. */
+function lazyPage<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) {
+  return lazy(() => load().then((module) => ({ default: module[name] })));
+}
+
+const DashboardPage = lazyPage(() => import('./pages/DashboardPage'), 'DashboardPage');
+const ProductsPage = lazyPage(() => import('./pages/products/ProductsPage'), 'ProductsPage');
+const ProductDetailPage = lazyPage(() => import('./pages/products/ProductDetailPage'), 'ProductDetailPage');
+const ImportProductsPage = lazyPage(() => import('./pages/products/ImportProductsPage'), 'ImportProductsPage');
+const SuppliersPage = lazyPage(() => import('./pages/SuppliersPage'), 'SuppliersPage');
+const WarehousesPage = lazyPage(() => import('./pages/WarehousesPage'), 'WarehousesPage');
+const NewMovementPage = lazyPage(() => import('./pages/movements/NewMovementPage'), 'NewMovementPage');
+const NfeImportPage = lazyPage(() => import('./pages/nfe/NfeImportPage'), 'NfeImportPage');
+const MovementsPage = lazyPage(() => import('./pages/movements/MovementsPage'), 'MovementsPage');
+const AlertsPage = lazyPage(() => import('./pages/AlertsPage'), 'AlertsPage');
+const InventoriesPage = lazyPage(() => import('./pages/inventory/InventoriesPage'), 'InventoriesPage');
+const InventoryDetailPage = lazyPage(() => import('./pages/inventory/InventoryDetailPage'), 'InventoryDetailPage');
+const ReportsPage = lazyPage(() => import('./pages/ReportsPage'), 'ReportsPage');
+const NewSalePage = lazyPage(() => import('./pages/sales/NewSalePage'), 'NewSalePage');
+const SalesPage = lazyPage(() => import('./pages/sales/SalesPage'), 'SalesPage');
+const CashPage = lazyPage(() => import('./pages/cash/CashPage'), 'CashPage');
+const CustomersPage = lazyPage(() => import('./pages/CustomersPage'), 'CustomersPage');
+const PurchaseOrdersPage = lazyPage(() => import('./pages/purchasing/PurchaseOrdersPage'), 'PurchaseOrdersPage');
+const PromotionsPage = lazyPage(() => import('./pages/PromotionsPage'), 'PromotionsPage');
+const DeliveriesPage = lazyPage(() => import('./pages/DeliveriesPage'), 'DeliveriesPage');
+const BillsPage = lazyPage(() => import('./pages/BillsPage'), 'BillsPage');
+const HelpPage = lazyPage(() => import('./pages/HelpPage'), 'HelpPage');
+const SettingsPage = lazyPage(() => import('./pages/SettingsPage'), 'SettingsPage');
+const AuditPage = lazyPage(() => import('./pages/AuditPage'), 'AuditPage');
+const UsersPage = lazyPage(() => import('./pages/UsersPage'), 'UsersPage');
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { session, loading } = useAuth();

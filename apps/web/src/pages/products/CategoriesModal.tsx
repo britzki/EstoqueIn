@@ -24,7 +24,11 @@ export function CategoriesModal({ onClose }: { onClose: () => void }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [removing, setRemoving] = useState<string | null>(null);
-  const { data: categories, isLoading } = useQuery({
+  const {
+    data: categories,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['categories', 'summary'],
     queryFn: () => api.get<CategorySummary[]>('/products/categories/summary'),
   });
@@ -71,6 +75,8 @@ export function CategoriesModal({ onClose }: { onClose: () => void }) {
     >
       {isLoading ? (
         <Spinner />
+      ) : error ? (
+        <ErrorMessage error={error} />
       ) : !categories?.length ? (
         <p className="text-sm text-slate-500">Nenhuma categoria ainda. Elas são criadas no cadastro dos produtos.</p>
       ) : (

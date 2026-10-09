@@ -1,7 +1,7 @@
 /**
  * Monta a pasta dist/ do app desktop:
- *   main.cjs     processo principal do Electron
- *   preload.cjs  ponte segura entre a interface e o programa (impressão da notinha)
+ *   main.cjs     processo principal do Electron (src/main.ts e os módulos que ele usa)
+ *   preload.cjs  ponte segura entre a interface e o programa (notinha, versão e cópia externa)
  *   server.cjs   API inteira (Express + Prisma Client) num único arquivo
  *   engine/      motor nativo do Prisma (fica fora do .asar)
  *   migrations/  migrations SQL aplicadas na inicialização
@@ -25,7 +25,8 @@ const step = (message) => console.info(`\n› ${message}`);
 rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, 'engine'), { recursive: true });
 
-if (!existsSync(join(prismaClientDir, 'index.js'))) {
+// Na versão de produção, gera sempre: um Prisma Client antigo (schema alterado sem gerar) iria no instalador.
+if (production || !existsSync(join(prismaClientDir, 'index.js'))) {
   step('Gerando Prisma Client');
   execSync('npx prisma generate', { cwd: apiDir, stdio: 'inherit' });
 }

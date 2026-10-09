@@ -5,7 +5,7 @@ import { ClipboardList, Plus } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useActiveWarehouses, useCategories } from '../../lib/hooks';
-import { formatDateTime } from '../../lib/format';
+import { formatDateTime, INVENTORY_STATUS } from '../../lib/format';
 import type { InventorySummary } from '../../lib/types';
 import {
   Badge,
@@ -23,12 +23,6 @@ import {
   Td,
   Th,
 } from '../../components/ui';
-
-export const INVENTORY_STATUS = {
-  OPEN: { label: 'Em contagem', tone: 'blue' },
-  COMPLETED: { label: 'Concluído', tone: 'green' },
-  CANCELLED: { label: 'Cancelado', tone: 'gray' },
-} as const;
 
 export function InventoriesPage() {
   const { can } = useAuth();

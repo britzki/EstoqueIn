@@ -33,7 +33,9 @@ import clsx from 'clsx';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ROLE_LABEL } from '../lib/format';
-import type { DeliveryDetail, Permission } from '../lib/types';
+import type { Permission } from '../lib/types';
+import { isOpenDelivery } from '../lib/delivery';
+import { useDeliveryBoard } from '../lib/hooks';
 import { Logo } from './Logo';
 import { Spinner } from './ui';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -81,12 +83,7 @@ export function Layout() {
     refetchInterval: 30_000,
   });
   // Mesma consulta do painel de entregas (o cache é compartilhado).
-  const { data: openDeliveries } = useQuery({
-    queryKey: ['deliveries', 'board'],
-    queryFn: () => api.get<DeliveryDetail[]>('/deliveries'),
-    refetchInterval: 30_000,
-    select: (list) => list.filter((d) => d.status === 'PENDING' || d.status === 'OUT' || d.status === 'FAILED').length,
-  });
+  const { data: openDeliveries } = useDeliveryBoard((list) => list.filter(isOpenDelivery).length);
 
   const sections: Array<{ title?: string; items: NavItem[] }> = [
     {

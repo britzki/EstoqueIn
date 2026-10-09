@@ -1,27 +1,20 @@
+import { readLocal, removeLocal, writeLocal } from './storage';
+
 const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 const TOKEN_KEY = 'estoquein.token';
 
+// Cópia em memória: com o armazenamento bloqueado (navegação privada), a sessão vale enquanto a aba estiver aberta.
+let memoryToken: string | null = null;
+
 export const tokenStore = {
-  get: () => {
-    try {
-      return localStorage.getItem(TOKEN_KEY);
-    } catch {
-      return null;
-    }
-  },
+  get: () => readLocal(TOKEN_KEY) ?? memoryToken,
   set: (token: string) => {
-    try {
-      localStorage.setItem(TOKEN_KEY, token);
-    } catch {
-      /* navegação privada: a sessão vale só enquanto a aba estiver aberta */
-    }
+    memoryToken = token;
+    writeLocal(TOKEN_KEY, token);
   },
   clear: () => {
-    try {
-      localStorage.removeItem(TOKEN_KEY);
-    } catch {
-      /* ignora */
-    }
+    memoryToken = null;
+    removeLocal(TOKEN_KEY);
   },
 };
 
@@ -107,7 +100,10 @@ export const api = {
     const response = await request(path, { query });
     const url = URL.createObjectURL(await response.blob());
     const link = Object.assign(document.createElement('a'), { href: url, download: filename });
+    // Alguns navegadores só baixam se o link estiver na página e o endereço ainda existir depois do clique.
+    document.body.append(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   },
 };

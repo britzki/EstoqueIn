@@ -123,6 +123,7 @@ export function OrderModal({ id, onClose }: { id: string; onClose: () => void })
       toast.success(updated.status === 'RECEIVED' ? 'Pedido marcado como recebido' : 'Pedido cancelado');
       for (const key of ['purchase-orders', 'reports']) queryClient.invalidateQueries({ queryKey: [key] });
     },
+    onError: (error) => toast.error('Não foi possível alterar o pedido', error.message),
   });
 
   const print = () => {
@@ -275,7 +276,7 @@ export function OrderDraftModal({
   const queryClient = useQueryClient();
   const [lines, setLines] = useState(initial.map((line) => ({ ...line, text: String(line.quantity) })));
   const [notes, setNotes] = useState('');
-  const quantities = lines.map((line) => Number(line.text.replace(',', '.')));
+  const quantities = lines.map((line) => Number(line.text));
   const invalid = lines.some(
     (line, index) => !(quantities[index] > 0) || (!line.fractional && !Number.isInteger(quantities[index])),
   );

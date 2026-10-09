@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { WalletCards } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { formatDate, formatMoney } from '../lib/format';
+import { formatDueDay, formatMoney } from '../lib/format';
 import type { BillsSummary } from '../lib/types';
 
 /** Contas vencidas e vencendo nos próximos 7 dias, na tela inicial. Some quando não há nada. */
@@ -38,8 +38,7 @@ export function BillsCard() {
             <ul className="mt-1 text-sm text-slate-700">
               {data.bills.slice(0, 4).map((bill) => (
                 <li key={bill.id}>
-                  {formatDate(`${new Date(bill.dueDate).toISOString().slice(0, 10)}T12:00:00`)} · {bill.description} ·{' '}
-                  {formatMoney(bill.amountCents)}
+                  {formatDueDay(bill.dueDate)} · {bill.description} · {formatMoney(bill.amountCents)}
                 </li>
               ))}
             </ul>

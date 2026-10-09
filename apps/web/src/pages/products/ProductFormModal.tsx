@@ -6,6 +6,18 @@ import { useCategories, useSuppliers } from '../../lib/hooks';
 import { FRACTIONAL_UNITS, UNITS, centsToInput, formatMoney, parseMoneyInput } from '../../lib/format';
 
 const INVALID_MONEY = 'Valor inválido. Use o formato 12,50';
+/** Campos que mostram o próprio erro embaixo deles. */
+const FIELDS_WITH_ERROR_SLOT = [
+  'sku',
+  'barcode',
+  'name',
+  'category',
+  'scaleCode',
+  'sourceYield',
+  'costCents',
+  'priceCents',
+  'minStock',
+];
 import { useToast } from '../../lib/toast';
 import type { Product, ProductSource } from '../../lib/types';
 import { Button, DecimalInput, ErrorMessage, Field, Input, Modal, Select, Textarea } from '../../components/ui';
@@ -38,13 +50,11 @@ const emptyForm = {
 };
 
 export function ProductFormModal({
-  open,
   onClose,
   product,
   bulkOf,
   onSaved,
 }: {
-  open: boolean;
   onClose: () => void;
   product?: (Product & { sourceProduct?: ProductSource | null }) | null;
   /** Cria a versão a granel deste produto fechado (ex.: saco de ração → ração por kg). */
@@ -95,7 +105,7 @@ export function ProductFormModal({
   const set = (field: keyof typeof form) => (value: string | boolean) =>
     setForm((current) => ({ ...current, [field]: value }));
 
-  const yieldValue = Number(form.sourceYield.replace(',', '.'));
+  const yieldValue = Number(form.sourceYield);
   const bulkCostCents = source && yieldValue > 0 ? Math.round(source.costCents / yieldValue) : null;
 
   const mutation = useMutation({
@@ -110,7 +120,7 @@ export function ProductFormModal({
         // O custo do granel vem do pacote a cada abertura; não é digitado.
         ...(!source && { costCents: parseMoneyInput(form.cost) ?? 0 }),
         priceCents: parseMoneyInput(form.price) ?? 0,
-        minStock: Number(form.minStock.replace(',', '.') || 0),
+        minStock: Number(form.minStock || 0),
         ...(source && { sourceProductId: source.id, sourceYield: yieldValue }),
         scaleCode: form.fractional ? form.scaleCode : '',
         supplierId: form.supplierId,
@@ -132,6 +142,8 @@ export function ProductFormModal({
   });
 
   const errors = mutation.error instanceof ApiError ? mutation.error.fieldErrors : {};
+  // Erro num campo que não aparece no formulário: mostra o aviso geral, senão "Salvar" parece não fazer nada.
+  const unshownError = Object.keys(errors).some((field) => !FIELDS_WITH_ERROR_SLOT.includes(field));
 
   // Integração externa: sugere dados do produto pela base pública Open Food Facts.
   const lookupBarcode = async () => {
@@ -168,7 +180,7 @@ export function ProductFormModal({
 
   return (
     <Modal
-      open={open}
+      open
       onClose={onClose}
       size="lg"
       title={product ? 'Editar produto' : bulkOf ? 'Nova versão a granel' : 'Novo produto'}
@@ -185,7 +197,7 @@ export function ProductFormModal({
       }
     >
       <form id="product-form" onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {mutation.error && !Object.keys(errors).length ? (
+        {mutation.error && (!Object.keys(errors).length || unshownError) ? (
           <div className="sm:col-span-2">
             <ErrorMessage error={mutation.error} />
           </div>
@@ -254,7 +266,12 @@ export function ProductFormModal({
               onChange={(e) => {
                 const unit = e.target.value;
                 // Unidades de peso, volume e comprimento já vêm marcadas como fracionadas.
-                setForm((current) => ({ ...current, unit, fractional: FRACTIONAL_UNITS.includes(unit) }));
+                // Kit é sempre vendido por unidade, mesmo com unidade de peso.
+                setForm((current) => ({
+                  ...current,
+                  unit,
+                  fractional: !current.isKit && FRACTIONAL_UNITS.includes(unit),
+                }));
               }}
             >
               {[...new Set([form.unit, ...UNITS])].map((unit) => (
@@ -268,6 +285,7 @@ export function ProductFormModal({
           <input
             type="checkbox"
             checked={form.fractional}
+            disabled={form.isKit}
             onChange={(e) => set('fractional')(e.target.checked)}
             className="mt-0.5 size-4 accent-brand-700"
           />

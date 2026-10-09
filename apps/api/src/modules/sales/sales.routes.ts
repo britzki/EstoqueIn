@@ -6,6 +6,7 @@ import { prisma } from '../../lib/prisma.js';
 import { param } from '../../lib/http.js';
 import { actorOf, recordAudit } from '../../lib/audit.js';
 import { paginated, paginationSchema, toSkipTake } from '../../lib/pagination.js';
+import { roundQty } from '../../lib/quantity.js';
 import { currentUser, requirePermission } from '../../middleware/auth.js';
 import {
   cancelSale,
@@ -14,7 +15,6 @@ import {
   getQuickProducts,
   getSale,
   resolveCode,
-  returnableQuantities,
   returnSchema,
   saleSchema,
 } from './sales.service.js';
@@ -60,13 +60,13 @@ salesRoutes.get('/', async (req, res) => {
   );
 });
 
-/** Usado pelo caixa: identifica o produto pelo código bipado (código de barras, etiqueta da balança ou SKU). */
 /** Botões rápidos da tela de venda (marcados no cadastro + mais vendidos). */
 salesRoutes.get('/quick-products', requirePermission('sales:create'), async (req, res) => {
   const warehouseId = typeof req.query.warehouseId === 'string' ? req.query.warehouseId : undefined;
   res.json(await getQuickProducts(warehouseId));
 });
 
+/** Usado pelo caixa: identifica o produto pelo código bipado (código de barras, etiqueta da balança ou SKU). */
 salesRoutes.get('/resolve', requirePermission('sales:create'), async (req, res) => {
   const code = typeof req.query.code === 'string' ? req.query.code : '';
   const warehouseId = typeof req.query.warehouseId === 'string' ? req.query.warehouseId : undefined;
@@ -75,11 +75,19 @@ salesRoutes.get('/resolve', requirePermission('sales:create'), async (req, res) 
 
 salesRoutes.get('/:id', async (req, res) => {
   const sale = await getSale(param(req, 'id'));
-  const remaining = await returnableQuantities(sale.id);
+  // Quanto de cada item ainda pode ser devolvido: vendido menos o que já voltou (as devoluções já vêm na venda).
+  const returned = new Map<string, number>();
+  for (const saleReturn of sale.returns) {
+    for (const item of saleReturn.items)
+      returned.set(item.saleItemId, (returned.get(item.saleItemId) ?? 0) + item.quantity);
+  }
   res.json(
     saleWithoutCost(req, {
       ...sale,
-      items: sale.items.map((item) => ({ ...item, returnable: remaining.get(item.id) ?? 0 })),
+      items: sale.items.map((item) => ({
+        ...item,
+        returnable: roundQty(item.quantity - (returned.get(item.id) ?? 0)),
+      })),
     }),
   );
 });

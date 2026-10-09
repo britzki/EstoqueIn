@@ -35,7 +35,10 @@ describe('Recuperação de acesso do administrador', () => {
       .send({ currentPassword: temporaryPassword, newPassword: 'novaSenhaForte1' });
     expect(changed.status).toBe(200);
     expect(changed.body.mustChangePassword).toBe(false);
-    expect((await api().get('/api/products').set(auth)).status).toBe(200);
+    // A troca encerra as sessões antigas; quem trocou continua com o token novo.
+    expect((await api().get('/api/products').set(auth)).status).toBe(401);
+    const renewed = { Authorization: `Bearer ${changed.body.token}` };
+    expect((await api().get('/api/products').set(renewed)).status).toBe(200);
     expect((await login(email, 'novaSenhaForte1')).status).toBe(200);
 
     const log = await prisma.auditLog.findMany({ where: { action: 'SECURITY' }, orderBy: { createdAt: 'asc' } });
@@ -191,5 +194,23 @@ describe('Importação de planilha com saldo', () => {
     expect(log.summary).toBe(
       'Importação de planilha: 2 produto(s) criado(s), 1 atualizado(s), 3 saldo(s) informado(s)',
     );
+  });
+});
+
+describe('Sessões depois de trocar a senha', () => {
+  it('senha redefinida pelo administrador derruba as sessões abertas do usuário', async () => {
+    const operator = await prisma.user.findFirstOrThrow({ where: { role: 'OPERATOR' } });
+    const session = await login(operator.email, 'Senha@123');
+    const auth = { Authorization: `Bearer ${session.body.token}` };
+    expect((await api().get('/api/auth/me').set(auth)).status).toBe(200);
+
+    const admin = await login('admin@teste.dev', 'Senha@123');
+    await api()
+      .patch(`/api/users/${operator.id}`)
+      .set({ Authorization: `Bearer ${admin.body.token}` })
+      .send({ password: 'OutraSenha@1' })
+      .expect(200);
+    expect((await api().get('/api/auth/me').set(auth)).status).toBe(401);
+    expect((await login(operator.email, 'OutraSenha@1')).status).toBe(200);
   });
 });

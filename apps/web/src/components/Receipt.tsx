@@ -1,23 +1,17 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
-import { desktop } from '../lib/desktop';
-import { useToast } from '../lib/toast';
+import { useCallback } from 'react';
 import { PAYMENT_LABEL, formatDateTime, formatNumber, formatMoneyPlain } from '../lib/format';
+import { SLIP_ROW, SlipFrame, SlipRule, useSlipPrinter } from './Slip';
 import type { SaleDetail, StoreSettings } from '../lib/types';
 
 const money = formatMoneyPlain;
 
 /** Notinha de venda para impressora térmica de bobina (58 ou 80 mm). Não é documento fiscal. */
 export function Receipt({ sale, settings }: { sale: SaleDetail; settings: StoreSettings }) {
-  const narrow = settings.receiptWidth === 58;
-  const row = 'flex justify-between gap-2';
-  const rule = <div className="my-1.5 border-t border-dashed border-black" />;
+  const row = SLIP_ROW;
+  const rule = <SlipRule />;
 
   return (
-    <div
-      className="bg-white font-mono leading-tight text-black"
-      style={{ width: narrow ? '48mm' : '72mm', fontSize: narrow ? '10px' : '11.5px', padding: '2mm' }}
-    >
+    <SlipFrame settings={settings}>
       <p className="text-center text-[1.2em] font-bold uppercase">{settings.storeName}</p>
       {settings.document && <p className="text-center">CNPJ {settings.document}</p>}
       {settings.address && <p className="text-center">{settings.address}</p>}
@@ -106,53 +100,8 @@ export function Receipt({ sale, settings }: { sale: SaleDetail; settings: StoreS
       {rule}
       {settings.receiptFooter && <p className="text-center">{settings.receiptFooter}</p>}
       <p className="mt-1 text-center text-[0.9em]">NÃO É DOCUMENTO FISCAL</p>
-    </div>
+    </SlipFrame>
   );
-}
-
-/**
- * Imprime um comprovante na bobina: monta o conteúdo na área de impressão (#print-root) e chama a impressora.
- * No programa desktop a impressão é direta (sem diálogo) se a impressora estiver configurada.
- */
-export function useSlipPrinter(settings: StoreSettings | undefined) {
-  const toast = useToast();
-  const [content, setContent] = useState<ReactNode | null>(null);
-
-  useEffect(() => {
-    if (!content || !settings) return;
-    // Espera o conteúdo aparecer na página antes de imprimir.
-    const timer = setTimeout(async () => {
-      try {
-        if (desktop) {
-          // Impressora desligada ou sem papel: avisa, em vez de o atendente achar que imprimiu.
-          const result = await desktop.printReceipt(settings.receiptWidth);
-          if (!result.ok && result.error && result.error !== 'cancelled') {
-            toast.error('Não foi possível imprimir', result.error);
-          }
-        } else window.print();
-      } catch (error) {
-        toast.error('Não foi possível imprimir', (error as Error).message);
-      } finally {
-        setContent(null);
-      }
-    }, 150);
-    return () => clearTimeout(timer);
-  }, [content, settings, toast]);
-
-  const print = useCallback((node: ReactNode) => setContent(node), []);
-
-  const portal =
-    content && settings
-      ? createPortal(
-          <>
-            <style>{`@media print { @page { size: ${settings.receiptWidth}mm auto; margin: 0; } }`}</style>
-            {content}
-          </>,
-          document.getElementById('print-root')!,
-        )
-      : null;
-
-  return { print, portal };
 }
 
 /** Imprime a notinha de uma venda. */

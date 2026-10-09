@@ -18,8 +18,9 @@ import { api, ApiError } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { useCurrentCash, useDebounced, useSaleWarehouse, useStoreSettings, invalidateSaleData } from '../../lib/hooks';
 import { useToast } from '../../lib/toast';
-import { centsToInput, formatMoney, formatNumber, parseMoneyInput } from '../../lib/format';
+import { centsToInput, formatMoney, formatNumber, parseMoneyInput, roundQty } from '../../lib/format';
 import type {
+  AccountStatement,
   LoyaltyProgress,
   Paginated,
   PaymentMethod,
@@ -44,7 +45,7 @@ import {
   PageHeader,
   Select,
 } from '../../components/ui';
-import { OpenCashForm } from '../cash/CashPage';
+import { OpenCashForm } from '../cash/OpenCashForm';
 import { useDeliverySlipPrinter } from '../../components/DeliverySlip';
 import { deliveryFee, formatDue } from '../../lib/delivery';
 import {
@@ -54,6 +55,7 @@ import {
   newDeliveryChoice,
   type DeliveryChoice,
 } from './DeliveryOptions';
+import { computePayment, exceedsCreditLimit } from './saleTotals';
 
 interface CartLine {
   key: number;
@@ -150,7 +152,7 @@ export function NewSalePage() {
       ...current,
       {
         key: nextKey++,
-        product: { ...card.rule.rewardProduct, priceCents: card.rule.rewardProduct.priceCents },
+        product: card.rule.rewardProduct,
         quantity: String(card.rule.rewardQuantity),
         giftRuleId: card.rule.id,
       },
@@ -188,7 +190,8 @@ export function NewSalePage() {
       const result = await api.get<ResolvedCode>('/sales/resolve', { code: value, warehouseId: activeWarehouse });
       addToCart(result.product, result.quantity);
     } catch (error) {
-      if (error instanceof ApiError && error.status === 404 && matches.length === 1) {
+      // Código não encontrado, mas a busca por nome deste mesmo texto achou um produto só: usa ele.
+      if (error instanceof ApiError && error.status === 404 && search === value && matches.length === 1) {
         const [only] = matches;
         return addToCart(only, only.fractional ? null : 1);
       }
@@ -210,41 +213,37 @@ export function NewSalePage() {
   const feeCents = delivery ? deliveryFee(itemsTotal, settings, delivery.waiveFee) : 0;
   const total = itemsTotal + feeCents;
   const collectCash = Boolean(delivery?.collectOnDelivery) && method === 'CASH' && !split;
-  const receivedCents = parseMoneyInput(received) ?? 0;
-  const firstCents = Math.min(parseMoneyInput(firstAmount) ?? 0, total);
-  const change = !split && method === 'CASH' && receivedCents > total ? receivedCents - total : 0;
-  // A segunda forma nunca repete a primeira.
-  const otherMethod = secondMethod === method ? METHODS.find((m) => m.value !== method)!.value : secondMethod;
+  const {
+    otherMethod,
+    receivedCents,
+    firstCents,
+    change,
+    cashShort,
+    splitInvalid,
+    accountCents,
+    usesAccount,
+    payments,
+  } = computePayment(total, { method, secondMethod, split, firstAmount, received });
 
   const invalidLine = cart.find((line) => {
     const quantity = toNumber(line.quantity);
     return (
       !(quantity > 0) ||
+      // O servidor aceita no máximo 3 casas decimais (gramas).
+      roundQty(quantity) !== quantity ||
       (!line.product.fractional && !Number.isInteger(quantity)) ||
       (!line.giftRuleId && line.product.priceCents <= 0)
     );
   });
-  const cashShort = !split && method === 'CASH' && received !== '' && receivedCents < total;
-  const splitInvalid = split && (firstCents <= 0 || firstCents >= total);
 
-  // Fiado: quanto vai para a conta do cliente nesta venda.
-  const accountCents = split
-    ? (method === 'ACCOUNT' ? firstCents : 0) + (otherMethod === 'ACCOUNT' ? total - firstCents : 0)
-    : method === 'ACCOUNT'
-      ? total
-      : 0;
-  const usesAccount = method === 'ACCOUNT' || (split && otherMethod === 'ACCOUNT');
+  // Fiado: saldo e limite do cliente (o extrato do fiado já traz os dois).
   const { data: customerAccount } = useQuery({
-    queryKey: ['customers', 'detail', customer.customer?.id],
-    queryFn: () =>
-      api.get<{ balanceCents: number; creditLimitCents: number | null }>(`/customers/${customer.customer!.id}`),
+    queryKey: ['customers', 'account', customer.customer?.id],
+    queryFn: () => api.get<AccountStatement>(`/customers/${customer.customer!.id}/account`),
     enabled: usesAccount && Boolean(customer.customer),
   });
   const accountNeedsCustomer = usesAccount && !customer.customer;
-  const overLimit =
-    customerAccount?.creditLimitCents !== null &&
-    customerAccount !== undefined &&
-    customerAccount.balanceCents + accountCents > (customerAccount.creditLimitCents ?? 0);
+  const overLimit = exceedsCreditLimit(customerAccount, accountCents);
 
   // Venda só com brinde do cartão fidelidade: total zero, sem pagamento.
   const onlyGifts = cart.length > 0 && cart.every((line) => line.giftRuleId);
@@ -269,15 +268,7 @@ export function NewSalePage() {
           loyaltyRuleId: line.giftRuleId,
         })),
         discountCents,
-        payments:
-          total === 0
-            ? []
-            : split
-              ? [
-                  { method, amountCents: firstCents },
-                  { method: otherMethod, amountCents: total - firstCents },
-                ]
-              : [{ method, amountCents: method === 'CASH' && receivedCents > total ? receivedCents : total }],
+        payments,
         customerId: customer.customer?.id,
         customerName: customer.customer ? undefined : customer.name,
         delivery: delivery ? deliveryPayload(delivery) : undefined,
@@ -689,6 +680,10 @@ export function NewSalePage() {
             <CustomerPicker
               value={customer}
               onChange={(next) => {
+                // O brinde do cartão fidelidade é de quem o ganhou: trocou de cliente, sai do carrinho.
+                if (next.customer?.id !== customer.customer?.id) {
+                  setCart((current) => current.filter((line) => !line.giftRuleId));
+                }
                 setCustomer(next);
                 // Outro cliente, outros endereços.
                 setDelivery((current) => current && { ...current, addressId: '' });

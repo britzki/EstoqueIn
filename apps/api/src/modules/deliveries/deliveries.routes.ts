@@ -122,7 +122,10 @@ async function changeStatus(
           : 'A entrega não está nesta etapa',
     );
   }
-  const updated = await prisma.delivery.update({ where: { id: delivery.id }, data, include: deliveryInclude });
+  // Só muda se ainda estiver na etapa conferida: um cancelamento ou outro clique ao mesmo tempo vence.
+  const { count } = await prisma.delivery.updateMany({ where: { id: delivery.id, status: { in: allowed } }, data });
+  if (count === 0) throw conflict('A entrega mudou de etapa. Atualize a tela.');
+  const updated = await prisma.delivery.findUniqueOrThrow({ where: { id: delivery.id }, include: deliveryInclude });
   await recordAudit(actorOf(req), {
     action: 'UPDATE',
     entity: 'Delivery',

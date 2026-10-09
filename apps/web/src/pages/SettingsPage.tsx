@@ -66,6 +66,8 @@ const SAMPLE_SALE: SaleDetail = {
   ],
 };
 
+type MoneyField = 'cashFloatCents' | 'deliveryFeeCents' | 'deliveryFreeAboveCents';
+
 export function SettingsPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -73,6 +75,8 @@ export function SettingsPage() {
   const [form, setForm] = useState<StoreSettings | null>(null);
   const [printers, setPrinters] = useState<Array<{ name: string; displayName: string }>>([]);
   const [printer, setPrinter] = useState('');
+  // Campos de dinheiro com texto que não é valor (ex.: "5O"): não salvam como zero sem avisar.
+  const [invalidMoney, setInvalidMoney] = useState<ReadonlySet<MoneyField>>(new Set());
 
   if (settings.data && !form) setForm(settings.data);
 
@@ -112,6 +116,18 @@ export function SettingsPage() {
 
   const set = <K extends keyof StoreSettings>(field: K, value: StoreSettings[K]) =>
     setForm({ ...form, [field]: value });
+  const setMoney = (field: MoneyField) => (text: string) => {
+    const cents = parseMoneyInput(text);
+    const invalid = text.trim() !== '' && cents === null;
+    setInvalidMoney((current) => {
+      const next = new Set(current);
+      if (invalid) next.add(field);
+      else next.delete(field);
+      return next;
+    });
+    if (!invalid) set(field, cents ?? 0);
+  };
+  const moneyError = (field: MoneyField) => (invalidMoney.has(field) ? 'Valor inválido' : errors[field]?.[0]);
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     save.mutate();
@@ -222,12 +238,13 @@ export function SettingsPage() {
                 <Field
                   label="Troco fixo da gaveta (R$)"
                   hint="Valor com que o caixa abre todo dia. No fechamento, o sistema diz quanto retirar para sobrar esse valor."
+                  error={moneyError('cashFloatCents')}
                 >
                   {(id) => (
                     <Input
                       id={id}
                       defaultValue={form.cashFloatCents ? centsToInput(form.cashFloatCents) : ''}
-                      onChange={(e) => set('cashFloatCents', parseMoneyInput(e.target.value) ?? 0)}
+                      onChange={(e) => setMoney('cashFloatCents')(e.target.value)}
                       inputMode="decimal"
                       placeholder="0,00"
                     />
@@ -249,12 +266,12 @@ export function SettingsPage() {
               description="Taxa somada sozinha na venda para entrega (dá para não cobrar em uma venda específica)."
             />
             <div className="grid gap-4 p-5 sm:grid-cols-3">
-              <Field label="Taxa de entrega (R$)" error={errors.deliveryFeeCents?.[0]}>
+              <Field label="Taxa de entrega (R$)" error={moneyError('deliveryFeeCents')}>
                 {(id) => (
                   <Input
                     id={id}
                     defaultValue={centsToInput(form.deliveryFeeCents)}
-                    onChange={(e) => set('deliveryFeeCents', parseMoneyInput(e.target.value) ?? 0)}
+                    onChange={(e) => setMoney('deliveryFeeCents')(e.target.value)}
                     inputMode="decimal"
                     placeholder="0,00"
                   />
@@ -263,13 +280,13 @@ export function SettingsPage() {
               <Field
                 label="Grátis a partir de (R$)"
                 hint="Compras desse valor para cima não pagam a taxa."
-                error={errors.deliveryFreeAboveCents?.[0]}
+                error={moneyError('deliveryFreeAboveCents')}
               >
                 {(id) => (
                   <Input
                     id={id}
                     defaultValue={centsToInput(form.deliveryFreeAboveCents)}
-                    onChange={(e) => set('deliveryFreeAboveCents', parseMoneyInput(e.target.value) ?? 0)}
+                    onChange={(e) => setMoney('deliveryFreeAboveCents')(e.target.value)}
                     inputMode="decimal"
                     placeholder="0,00"
                   />
@@ -352,7 +369,7 @@ export function SettingsPage() {
           </Card>
 
           <div className="flex justify-end">
-            <Button type="submit" loading={save.isPending}>
+            <Button type="submit" loading={save.isPending} disabled={invalidMoney.size > 0}>
               Salvar configurações
             </Button>
           </div>
